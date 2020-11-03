@@ -315,11 +315,11 @@ impl Unparse for SpecialForm {
             SpecialForm::Quote(f) => format!("(quote {})", f.unparse()),
             SpecialForm::Var(s) => format!("(var {})", s),
             SpecialForm::Fn(s, f) => format!(
-                "(fn {} ({}))",
+                "(fn {} {})",
                 s.clone().unwrap_or_default(),
                 f.iter()
                     .map(|(bf, bfm, f)| format!(
-                        "[{}{}] {}",
+                        "([{}{}] {})",
                         bf.iter()
                             .map(|bf| bf.unparse())
                             .collect::<Vec<String>>()
