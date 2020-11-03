@@ -75,6 +75,24 @@ impl<E: Clone> List<E> {
         }
     }
 
+    pub fn skip(&self, count: usize) -> Self {
+        if count > self.size {
+            Self::empty()
+        } else {
+            let mut rest = &self.node;
+            for _ in 0..count {
+                rest = match rest.deref() {
+                    Node::Empty => unreachable!(),
+                    Node::Node(_, ref rest) => rest,
+                };
+            }
+            Self {
+                size: self.size - count,
+                node: rest.clone(),
+            }
+        }
+    }
+
     pub fn len(&self) -> usize {
         self.size
     }
@@ -246,5 +264,20 @@ mod tests {
         let list1 = list![1, 2];
         let list2 = list![1, 2, 3];
         assert!(list1.len() != list2.len());
+    }
+
+    #[test]
+    fn list_skip() {
+        let list1 = list![1, 2, 3];
+        assert_eq!(list1, list1.skip(0));
+
+        let list2 = list![2, 3];
+        assert_eq!(list2, list1.skip(1));
+
+        let list2 = list![3];
+        assert_eq!(list2, list1.skip(2));
+        
+        let list2: List<i32> = list![];
+        assert_eq!(list2, list1.skip(3));
     }
 }
