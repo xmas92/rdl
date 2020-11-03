@@ -466,6 +466,62 @@ impl Hash for RuntimeValue {
     }
 }
 
+impl From<i64> for RuntimeValue {
+    fn from(n: i64) -> Self {
+        RuntimeValue::Integer(n)
+    }
+}
+impl From<BigInt> for RuntimeValue {
+    fn from(n: BigInt) -> Self {
+        RuntimeValue::BigInteger(Box::new(n))
+    }
+}
+impl From<f64> for RuntimeValue {
+    fn from(n: f64) -> Self {
+        RuntimeValue::Float(n)
+    }
+}
+impl From<BigRational> for RuntimeValue {
+    fn from(n: BigRational) -> Self {
+        RuntimeValue::BigFloat(Box::new(n))
+    }
+}
+impl From<String> for RuntimeValue {
+    fn from(s: String) -> Self {
+        RuntimeValue::String(Box::new(s))
+    }
+}
+impl From<char> for RuntimeValue {
+    fn from(c: char) -> Self {
+        RuntimeValue::Character(c)
+    }
+}
+impl From<bool> for RuntimeValue {
+    fn from(b: bool) -> Self {
+        RuntimeValue::Boolean(b)
+    }
+}
+impl From<Vector<RuntimeValue>> for RuntimeValue {
+    fn from(v: Vector<RuntimeValue>) -> Self {
+        RuntimeValue::Vector(Box::new(v))
+    }
+}
+impl From<HashMap<RuntimeValue, RuntimeValue>> for RuntimeValue {
+    fn from(m: HashMap<RuntimeValue, RuntimeValue>) -> Self {
+        RuntimeValue::Map(Box::new(m))
+    }
+}
+impl From<HashSet<RuntimeValue>> for RuntimeValue {
+    fn from(s: HashSet<RuntimeValue>) -> Self {
+        RuntimeValue::Set(Box::new(s))
+    }
+}
+impl From<List<RuntimeValue>> for RuntimeValue {
+    fn from(l: List<RuntimeValue>) -> Self {
+        RuntimeValue::List(Box::new(l))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
