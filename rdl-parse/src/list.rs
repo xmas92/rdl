@@ -276,7 +276,7 @@ mod tests {
 
         let list2 = list![3];
         assert_eq!(list2, list1.skip(2));
-        
+
         let list2: List<i32> = list![];
         assert_eq!(list2, list1.skip(3));
     }

@@ -9,22 +9,30 @@ use crate::{
 };
 
 macro_rules! intrinsic_function_internal {
-    (() $function_block:block) => {
+    (() $function_block:block $(#[doc = $doc:expr])*) => {
+        #[inline(always)]
+        $(#[doc = $doc])*
         pub fn internal0() -> RuntimeResult {
             $function_block
         }
     };
-    (($arg0:ident) $function_block:block) => {
+    (($arg0:ident) $function_block:block $(#[doc = $doc:expr])*) => {
+        #[inline(always)]
+        $(#[doc = $doc])*
         pub fn internal1($arg0: &RuntimeValue) -> RuntimeResult {
             $function_block
         }
     };
-    (($arg0:ident, $arg1:ident) $function_block:block) => {
+    (($arg0:ident, $arg1:ident) $function_block:block $(#[doc = $doc:expr])*) => {
+        #[inline(always)]
+        $(#[doc = $doc])*
         pub fn internal2($arg0: &RuntimeValue, $arg1: &RuntimeValue) -> RuntimeResult {
             $function_block
         }
     };
-    (($arg0:ident, $arg1:ident, $arg2:ident) $function_block:block) => {
+    (($arg0:ident, $arg1:ident, $arg2:ident) $function_block:block $(#[doc = $doc:expr])*) => {
+        #[inline(always)]
+        $(#[doc = $doc])*
         pub fn internal3(
             $arg0: &RuntimeValue,
             $arg1: &RuntimeValue,
@@ -33,7 +41,9 @@ macro_rules! intrinsic_function_internal {
             $function_block
         }
     };
-    (($arg0:ident, $arg1:ident, $arg2:ident, $arg3:ident) $function_block:block) => {
+    (($arg0:ident, $arg1:ident, $arg2:ident, $arg3:ident) $function_block:block $(#[doc = $doc:expr])*) => {
+        #[inline(always)]
+        $(#[doc = $doc])*
         pub fn internal4(
             $arg0: &RuntimeValue,
             $arg1: &RuntimeValue,
@@ -43,7 +53,9 @@ macro_rules! intrinsic_function_internal {
             $function_block
         }
     };
-    (($arg0:ident, $arg1:ident, $arg2:ident, $arg3:ident, $arg4:ident) $function_block:block) => {
+    (($arg0:ident, $arg1:ident, $arg2:ident, $arg3:ident, $arg4:ident) $function_block:block $(#[doc = $doc:expr])*) => {
+        #[inline(always)]
+        $(#[doc = $doc])*
         pub fn internal5(
             $arg0: &RuntimeValue,
             $arg1: &RuntimeValue,
@@ -54,7 +66,9 @@ macro_rules! intrinsic_function_internal {
             $function_block
         }
     };
-    (($arg0:ident, $arg1:ident, $arg2:ident, $arg3:ident, $arg4:ident, $arg5:ident) $function_block:block) => {
+    (($arg0:ident, $arg1:ident, $arg2:ident, $arg3:ident, $arg4:ident, $arg5:ident) $function_block:block $(#[doc = $doc:expr])*) => {
+        #[inline(always)]
+        $(#[doc = $doc])*
         pub fn internal6(
             $arg0: &RuntimeValue,
             $arg1: &RuntimeValue,
@@ -69,9 +83,8 @@ macro_rules! intrinsic_function_internal {
 }
 
 macro_rules! intrinsic_function_builder {
-    ($args:tt $function_block:block) => {
-        #[inline(always)]
-        intrinsic_function_internal!($args $function_block);
+    ( $args:tt $function_block:block $(#[doc = $doc:expr])*) => {
+        intrinsic_function_internal!($args $function_block $(#[doc = $doc])*);
     };
 }
 
@@ -223,11 +236,13 @@ macro_rules! intrinsic_function_matcher {
 }
 
 macro_rules! intrinsic_function {
-    ($name:ident$($type:ident $args:tt $function_block:block)+) => {
+    ($(#[doc = $outer_doc:expr])* $name:ident$($(#[doc = $inner_doc:expr])* $type:ident $args:tt $function_block:block)+) => {
         #[allow(dead_code)]
         #[allow(non_camel_case_types)]
+        $(#[doc = $outer_doc])*
         pub struct $name();
         impl $name {
+            /// Return a RuntimeValue::Function which is used to call this intrinsic.
             #[inline]
             pub fn function() -> RuntimeValue {
                 RuntimeValue::Function(
@@ -239,16 +254,19 @@ macro_rules! intrinsic_function {
                     )
                 )
             }
-            $(intrinsic_function_builder!($args $function_block);)+
+            $(intrinsic_function_builder!($args $function_block $(#[doc = $inner_doc])*);)+
         }
     };
 }
 
 intrinsic_function!(
+    /// Plus is used to perform checked addition
     plus
+    /// Returns the additive identity as an Integer (RuntimeValue::Integer(0))
     function () {
         Ok(RuntimeValue::Integer(0))
     }
+    /// Returns x if it is a number
     function (x) {
         match x {
             RuntimeValue::Integer(_) |
@@ -258,6 +276,8 @@ intrinsic_function!(
             _ => {Err(RuntimeError::new(GeneralError::new(format!("({:?}) is not a number", x))))}
         }
     }
+    /// Returns x+y\
+    /// Requires that both types are of the same number type and addition is checked
     function (x, y) {
         match (x, y) {
             (RuntimeValue::Integer(n1),RuntimeValue::Integer(n2)) => {
@@ -279,6 +299,10 @@ intrinsic_function!(
             _ => {Err(RuntimeError::new(GeneralError::new(format!("Type mismatch plus ({:?}, {:?})", x, y))))}
         }
     }
+    /// **Variadic**
+    ///
+    /// Returns addition of all the arguments\
+    /// Requires that all types are of the same number type and addition is checked
     variadic (x, y, more) {
         match more {
             RuntimeValue::Vector(v) => {
@@ -339,7 +363,7 @@ intrinsic_function!(
 intrinsic_function!(
     star
     function () {
-        Ok(RuntimeValue::Integer(0))
+        Ok(RuntimeValue::Integer(1))
     }
     function (x) {
         match x {
@@ -399,53 +423,187 @@ fn arithmetic_basic_test() {
     let minus_fn = minus::function();
     let star_fn = star::function();
 
-
     let args = vector![int0.clone(), int0.clone()];
-    assert_eq!(int0.clone(), plus_fn.evaluate_global_context_with_args(args.clone()).unwrap());
-    assert_eq!(int0.clone(), star_fn.evaluate_global_context_with_args(args.clone()).unwrap());
-    assert_eq!(int0.clone(), minus_fn.evaluate_global_context_with_args(args.clone()).unwrap());
+    assert_eq!(
+        int0.clone(),
+        plus_fn
+            .evaluate_global_context_with_args(args.clone())
+            .unwrap()
+    );
+    assert_eq!(
+        int0.clone(),
+        star_fn
+            .evaluate_global_context_with_args(args.clone())
+            .unwrap()
+    );
+    assert_eq!(
+        int0.clone(),
+        minus_fn
+            .evaluate_global_context_with_args(args.clone())
+            .unwrap()
+    );
 
     let args = vector![int1.clone(), int0.clone()];
-    assert_eq!(int1.clone(), plus_fn.evaluate_global_context_with_args(args.clone()).unwrap());
-    assert_eq!(int1.clone(), minus_fn.evaluate_global_context_with_args(args.clone()).unwrap());
-    assert_eq!(int0.clone(), star_fn.evaluate_global_context_with_args(args.clone()).unwrap());
+    assert_eq!(
+        int1.clone(),
+        plus_fn
+            .evaluate_global_context_with_args(args.clone())
+            .unwrap()
+    );
+    assert_eq!(
+        int1.clone(),
+        minus_fn
+            .evaluate_global_context_with_args(args.clone())
+            .unwrap()
+    );
+    assert_eq!(
+        int0.clone(),
+        star_fn
+            .evaluate_global_context_with_args(args.clone())
+            .unwrap()
+    );
 
     let args = vector![int1.clone(), int0.clone(), int1.clone(), int1.clone()];
-    assert_eq!(RuntimeValue::Integer(3), plus_fn.evaluate_global_context_with_args(args.clone()).unwrap());
-    assert_eq!(RuntimeValue::Integer(-1), minus_fn.evaluate_global_context_with_args(args.clone()).unwrap());
-    assert_eq!(int0.clone(), star_fn.evaluate_global_context_with_args(args.clone()).unwrap());
+    assert_eq!(
+        RuntimeValue::Integer(3),
+        plus_fn
+            .evaluate_global_context_with_args(args.clone())
+            .unwrap()
+    );
+    assert_eq!(
+        RuntimeValue::Integer(-1),
+        minus_fn
+            .evaluate_global_context_with_args(args.clone())
+            .unwrap()
+    );
+    assert_eq!(
+        int0.clone(),
+        star_fn
+            .evaluate_global_context_with_args(args.clone())
+            .unwrap()
+    );
 
     let args = vector![bigint1.clone(), bigint0.clone()];
-    assert_eq!(bigint1.clone(), plus_fn.evaluate_global_context_with_args(args.clone()).unwrap());
-    assert_eq!(bigint1.clone(), minus_fn.evaluate_global_context_with_args(args.clone()).unwrap());
-    assert_eq!(bigint0.clone(), star_fn.evaluate_global_context_with_args(args.clone()).unwrap());
+    assert_eq!(
+        bigint1.clone(),
+        plus_fn
+            .evaluate_global_context_with_args(args.clone())
+            .unwrap()
+    );
+    assert_eq!(
+        bigint1.clone(),
+        minus_fn
+            .evaluate_global_context_with_args(args.clone())
+            .unwrap()
+    );
+    assert_eq!(
+        bigint0.clone(),
+        star_fn
+            .evaluate_global_context_with_args(args.clone())
+            .unwrap()
+    );
 
     let args = vector![float1.clone(), float0.clone()];
-    assert_eq!(float1.clone(), plus_fn.evaluate_global_context_with_args(args.clone()).unwrap());
-    assert_eq!(float1.clone(), minus_fn.evaluate_global_context_with_args(args.clone()).unwrap());
-    assert_eq!(float0.clone(), star_fn.evaluate_global_context_with_args(args.clone()).unwrap());
+    assert_eq!(
+        float1.clone(),
+        plus_fn
+            .evaluate_global_context_with_args(args.clone())
+            .unwrap()
+    );
+    assert_eq!(
+        float1.clone(),
+        minus_fn
+            .evaluate_global_context_with_args(args.clone())
+            .unwrap()
+    );
+    assert_eq!(
+        float0.clone(),
+        star_fn
+            .evaluate_global_context_with_args(args.clone())
+            .unwrap()
+    );
 
     let args = vector![bigfloat1.clone(), bigfloat0.clone()];
-    assert_eq!(bigfloat1.clone(), plus_fn.evaluate_global_context_with_args(args.clone()).unwrap());
-    assert_eq!(bigfloat1.clone(), minus_fn.evaluate_global_context_with_args(args.clone()).unwrap());
-    assert_eq!(bigfloat0.clone(), star_fn.evaluate_global_context_with_args(args.clone()).unwrap());
+    assert_eq!(
+        bigfloat1.clone(),
+        plus_fn
+            .evaluate_global_context_with_args(args.clone())
+            .unwrap()
+    );
+    assert_eq!(
+        bigfloat1.clone(),
+        minus_fn
+            .evaluate_global_context_with_args(args.clone())
+            .unwrap()
+    );
+    assert_eq!(
+        bigfloat0.clone(),
+        star_fn
+            .evaluate_global_context_with_args(args.clone())
+            .unwrap()
+    );
 
     let args = vector![bigfloat1.clone(), bigfloat0.clone()];
-    assert_eq!(bigfloat1.clone(), plus_fn.evaluate_global_context_with_args(args.clone()).unwrap());
-    assert_eq!(bigfloat1.clone(), minus_fn.evaluate_global_context_with_args(args.clone()).unwrap());
-    assert_eq!(bigfloat0.clone(), star_fn.evaluate_global_context_with_args(args.clone()).unwrap());
+    assert_eq!(
+        bigfloat1.clone(),
+        plus_fn
+            .evaluate_global_context_with_args(args.clone())
+            .unwrap()
+    );
+    assert_eq!(
+        bigfloat1.clone(),
+        minus_fn
+            .evaluate_global_context_with_args(args.clone())
+            .unwrap()
+    );
+    assert_eq!(
+        bigfloat0.clone(),
+        star_fn
+            .evaluate_global_context_with_args(args.clone())
+            .unwrap()
+    );
 
     let args = vector![bigint1.clone(), bigint1.clone()];
-    assert_eq!(bigint0.clone(), minus_fn.evaluate_global_context_with_args(args.clone()).unwrap());
-    assert_eq!(bigint1.clone(), star_fn.evaluate_global_context_with_args(args.clone()).unwrap());
+    assert_eq!(
+        bigint0.clone(),
+        minus_fn
+            .evaluate_global_context_with_args(args.clone())
+            .unwrap()
+    );
+    assert_eq!(
+        bigint1.clone(),
+        star_fn
+            .evaluate_global_context_with_args(args.clone())
+            .unwrap()
+    );
 
     let args = vector![float1.clone(), float1.clone()];
-    assert_eq!(float0.clone(), minus_fn.evaluate_global_context_with_args(args.clone()).unwrap());
-    assert_eq!(float1.clone(), star_fn.evaluate_global_context_with_args(args.clone()).unwrap());
+    assert_eq!(
+        float0.clone(),
+        minus_fn
+            .evaluate_global_context_with_args(args.clone())
+            .unwrap()
+    );
+    assert_eq!(
+        float1.clone(),
+        star_fn
+            .evaluate_global_context_with_args(args.clone())
+            .unwrap()
+    );
 
     let args = vector![bigfloat1.clone(), bigfloat1.clone()];
-    assert_eq!(bigfloat0.clone(), minus_fn.evaluate_global_context_with_args(args.clone()).unwrap());
-    assert_eq!(bigfloat1.clone(), star_fn.evaluate_global_context_with_args(args.clone()).unwrap());
+    assert_eq!(
+        bigfloat0.clone(),
+        minus_fn
+            .evaluate_global_context_with_args(args.clone())
+            .unwrap()
+    );
+    assert_eq!(
+        bigfloat1.clone(),
+        star_fn
+            .evaluate_global_context_with_args(args.clone())
+            .unwrap()
+    );
 }
 
 #[test]
@@ -460,69 +618,147 @@ fn arithmetic_error_test() {
     let star_fn = star::function();
 
     let args = vector![int.clone(), bigint.clone(), float.clone(), bigfloat.clone()];
-    assert!(plus_fn.evaluate_global_context_with_args(args.clone()).is_err());
-    assert!(minus_fn.evaluate_global_context_with_args(args.clone()).is_err());
-    assert!(star_fn.evaluate_global_context_with_args(args.clone()).is_err());
+    assert!(plus_fn
+        .evaluate_global_context_with_args(args.clone())
+        .is_err());
+    assert!(minus_fn
+        .evaluate_global_context_with_args(args.clone())
+        .is_err());
+    assert!(star_fn
+        .evaluate_global_context_with_args(args.clone())
+        .is_err());
 
     let args = vector![int.clone(), bigint.clone()];
-    assert!(plus_fn.evaluate_global_context_with_args(args.clone()).is_err());
-    assert!(minus_fn.evaluate_global_context_with_args(args.clone()).is_err());
-    assert!(star_fn.evaluate_global_context_with_args(args.clone()).is_err());
+    assert!(plus_fn
+        .evaluate_global_context_with_args(args.clone())
+        .is_err());
+    assert!(minus_fn
+        .evaluate_global_context_with_args(args.clone())
+        .is_err());
+    assert!(star_fn
+        .evaluate_global_context_with_args(args.clone())
+        .is_err());
 
     let args = vector![int.clone(), float.clone()];
-    assert!(plus_fn.evaluate_global_context_with_args(args.clone()).is_err());
-    assert!(minus_fn.evaluate_global_context_with_args(args.clone()).is_err());
-    assert!(star_fn.evaluate_global_context_with_args(args.clone()).is_err());
-    
+    assert!(plus_fn
+        .evaluate_global_context_with_args(args.clone())
+        .is_err());
+    assert!(minus_fn
+        .evaluate_global_context_with_args(args.clone())
+        .is_err());
+    assert!(star_fn
+        .evaluate_global_context_with_args(args.clone())
+        .is_err());
+
     let args = vector![int.clone(), bigfloat.clone()];
-    assert!(plus_fn.evaluate_global_context_with_args(args.clone()).is_err());
-    assert!(minus_fn.evaluate_global_context_with_args(args.clone()).is_err());
-    assert!(star_fn.evaluate_global_context_with_args(args.clone()).is_err());
+    assert!(plus_fn
+        .evaluate_global_context_with_args(args.clone())
+        .is_err());
+    assert!(minus_fn
+        .evaluate_global_context_with_args(args.clone())
+        .is_err());
+    assert!(star_fn
+        .evaluate_global_context_with_args(args.clone())
+        .is_err());
 
     let args = vector![bigint.clone(), int.clone()];
-    assert!(plus_fn.evaluate_global_context_with_args(args.clone()).is_err());
-    assert!(minus_fn.evaluate_global_context_with_args(args.clone()).is_err());
-    assert!(star_fn.evaluate_global_context_with_args(args.clone()).is_err());
+    assert!(plus_fn
+        .evaluate_global_context_with_args(args.clone())
+        .is_err());
+    assert!(minus_fn
+        .evaluate_global_context_with_args(args.clone())
+        .is_err());
+    assert!(star_fn
+        .evaluate_global_context_with_args(args.clone())
+        .is_err());
 
     let args = vector![bigint.clone(), float.clone()];
-    assert!(plus_fn.evaluate_global_context_with_args(args.clone()).is_err());
-    assert!(minus_fn.evaluate_global_context_with_args(args.clone()).is_err());
-    assert!(star_fn.evaluate_global_context_with_args(args.clone()).is_err());
+    assert!(plus_fn
+        .evaluate_global_context_with_args(args.clone())
+        .is_err());
+    assert!(minus_fn
+        .evaluate_global_context_with_args(args.clone())
+        .is_err());
+    assert!(star_fn
+        .evaluate_global_context_with_args(args.clone())
+        .is_err());
 
     let args = vector![bigint.clone(), bigfloat.clone()];
-    assert!(plus_fn.evaluate_global_context_with_args(args.clone()).is_err());
-    assert!(minus_fn.evaluate_global_context_with_args(args.clone()).is_err());
-    assert!(star_fn.evaluate_global_context_with_args(args.clone()).is_err());
+    assert!(plus_fn
+        .evaluate_global_context_with_args(args.clone())
+        .is_err());
+    assert!(minus_fn
+        .evaluate_global_context_with_args(args.clone())
+        .is_err());
+    assert!(star_fn
+        .evaluate_global_context_with_args(args.clone())
+        .is_err());
 
     let args = vector![float.clone(), int.clone()];
-    assert!(plus_fn.evaluate_global_context_with_args(args.clone()).is_err());
-    assert!(minus_fn.evaluate_global_context_with_args(args.clone()).is_err());
-    assert!(star_fn.evaluate_global_context_with_args(args.clone()).is_err());
+    assert!(plus_fn
+        .evaluate_global_context_with_args(args.clone())
+        .is_err());
+    assert!(minus_fn
+        .evaluate_global_context_with_args(args.clone())
+        .is_err());
+    assert!(star_fn
+        .evaluate_global_context_with_args(args.clone())
+        .is_err());
 
     let args = vector![float.clone(), bigint.clone()];
-    assert!(plus_fn.evaluate_global_context_with_args(args.clone()).is_err());
-    assert!(minus_fn.evaluate_global_context_with_args(args.clone()).is_err());
-    assert!(star_fn.evaluate_global_context_with_args(args.clone()).is_err());
+    assert!(plus_fn
+        .evaluate_global_context_with_args(args.clone())
+        .is_err());
+    assert!(minus_fn
+        .evaluate_global_context_with_args(args.clone())
+        .is_err());
+    assert!(star_fn
+        .evaluate_global_context_with_args(args.clone())
+        .is_err());
 
     let args = vector![float.clone(), bigfloat.clone()];
-    assert!(plus_fn.evaluate_global_context_with_args(args.clone()).is_err());
-    assert!(minus_fn.evaluate_global_context_with_args(args.clone()).is_err());
-    assert!(star_fn.evaluate_global_context_with_args(args.clone()).is_err());
-    
+    assert!(plus_fn
+        .evaluate_global_context_with_args(args.clone())
+        .is_err());
+    assert!(minus_fn
+        .evaluate_global_context_with_args(args.clone())
+        .is_err());
+    assert!(star_fn
+        .evaluate_global_context_with_args(args.clone())
+        .is_err());
+
     let args = vector![bigfloat.clone(), int.clone()];
-    assert!(plus_fn.evaluate_global_context_with_args(args.clone()).is_err());
-    assert!(minus_fn.evaluate_global_context_with_args(args.clone()).is_err());
-    assert!(star_fn.evaluate_global_context_with_args(args.clone()).is_err());
-    
+    assert!(plus_fn
+        .evaluate_global_context_with_args(args.clone())
+        .is_err());
+    assert!(minus_fn
+        .evaluate_global_context_with_args(args.clone())
+        .is_err());
+    assert!(star_fn
+        .evaluate_global_context_with_args(args.clone())
+        .is_err());
+
     let args = vector![bigfloat.clone(), bigint.clone()];
-    assert!(plus_fn.evaluate_global_context_with_args(args.clone()).is_err());
-    assert!(minus_fn.evaluate_global_context_with_args(args.clone()).is_err());
-    assert!(star_fn.evaluate_global_context_with_args(args.clone()).is_err());
+    assert!(plus_fn
+        .evaluate_global_context_with_args(args.clone())
+        .is_err());
+    assert!(minus_fn
+        .evaluate_global_context_with_args(args.clone())
+        .is_err());
+    assert!(star_fn
+        .evaluate_global_context_with_args(args.clone())
+        .is_err());
 
     let args = vector![bigfloat.clone(), float.clone()];
-    assert!(plus_fn.evaluate_global_context_with_args(args.clone()).is_err());
-    assert!(minus_fn.evaluate_global_context_with_args(args.clone()).is_err());
-    assert!(star_fn.evaluate_global_context_with_args(args.clone()).is_err());
+    assert!(plus_fn
+        .evaluate_global_context_with_args(args.clone())
+        .is_err());
+    assert!(minus_fn
+        .evaluate_global_context_with_args(args.clone())
+        .is_err());
+    assert!(star_fn
+        .evaluate_global_context_with_args(args.clone())
+        .is_err());
 }
 
 #[test]
@@ -535,46 +771,94 @@ fn arithmetic_overflow_underflow_test() {
     let plus_fn = plus::function();
     let minus_fn = minus::function();
     let star_fn = star::function();
-    
+
     let args = vector![int_min.clone(), int0.clone()];
-    assert!(plus_fn.evaluate_global_context_with_args(args.clone()).is_ok());
-    assert!(minus_fn.evaluate_global_context_with_args(args.clone()).is_ok());
-    assert!(star_fn.evaluate_global_context_with_args(args.clone()).is_ok());
+    assert!(plus_fn
+        .evaluate_global_context_with_args(args.clone())
+        .is_ok());
+    assert!(minus_fn
+        .evaluate_global_context_with_args(args.clone())
+        .is_ok());
+    assert!(star_fn
+        .evaluate_global_context_with_args(args.clone())
+        .is_ok());
 
     let args = vector![int_min.clone(), int1.clone()];
-    assert!(plus_fn.evaluate_global_context_with_args(args.clone()).is_ok());
-    assert!(minus_fn.evaluate_global_context_with_args(args.clone()).is_err());
-    assert!(star_fn.evaluate_global_context_with_args(args.clone()).is_ok());
+    assert!(plus_fn
+        .evaluate_global_context_with_args(args.clone())
+        .is_ok());
+    assert!(minus_fn
+        .evaluate_global_context_with_args(args.clone())
+        .is_err());
+    assert!(star_fn
+        .evaluate_global_context_with_args(args.clone())
+        .is_ok());
 
     let args = vector![int_max.clone(), int0.clone()];
-    assert!(plus_fn.evaluate_global_context_with_args(args.clone()).is_ok());
-    assert!(minus_fn.evaluate_global_context_with_args(args.clone()).is_ok());
-    assert!(star_fn.evaluate_global_context_with_args(args.clone()).is_ok());
+    assert!(plus_fn
+        .evaluate_global_context_with_args(args.clone())
+        .is_ok());
+    assert!(minus_fn
+        .evaluate_global_context_with_args(args.clone())
+        .is_ok());
+    assert!(star_fn
+        .evaluate_global_context_with_args(args.clone())
+        .is_ok());
 
     let args = vector![int_max.clone(), int1.clone()];
-    assert!(plus_fn.evaluate_global_context_with_args(args.clone()).is_err());
-    assert!(minus_fn.evaluate_global_context_with_args(args.clone()).is_ok());
-    assert!(star_fn.evaluate_global_context_with_args(args.clone()).is_ok());
-    
+    assert!(plus_fn
+        .evaluate_global_context_with_args(args.clone())
+        .is_err());
+    assert!(minus_fn
+        .evaluate_global_context_with_args(args.clone())
+        .is_ok());
+    assert!(star_fn
+        .evaluate_global_context_with_args(args.clone())
+        .is_ok());
+
     let args = vector![int_max.clone(), int_max.clone()];
-    assert!(plus_fn.evaluate_global_context_with_args(args.clone()).is_err());
-    assert!(minus_fn.evaluate_global_context_with_args(args.clone()).is_ok());
-    assert!(star_fn.evaluate_global_context_with_args(args.clone()).is_err());
+    assert!(plus_fn
+        .evaluate_global_context_with_args(args.clone())
+        .is_err());
+    assert!(minus_fn
+        .evaluate_global_context_with_args(args.clone())
+        .is_ok());
+    assert!(star_fn
+        .evaluate_global_context_with_args(args.clone())
+        .is_err());
 
     let args = vector![int_max.clone(), int_min.clone()];
-    assert!(plus_fn.evaluate_global_context_with_args(args.clone()).is_ok());
-    assert!(minus_fn.evaluate_global_context_with_args(args.clone()).is_err());
-    assert!(star_fn.evaluate_global_context_with_args(args.clone()).is_err());
+    assert!(plus_fn
+        .evaluate_global_context_with_args(args.clone())
+        .is_ok());
+    assert!(minus_fn
+        .evaluate_global_context_with_args(args.clone())
+        .is_err());
+    assert!(star_fn
+        .evaluate_global_context_with_args(args.clone())
+        .is_err());
 
     let args = vector![int_min.clone(), int_min.clone()];
-    assert!(plus_fn.evaluate_global_context_with_args(args.clone()).is_err());
-    assert!(minus_fn.evaluate_global_context_with_args(args.clone()).is_ok());
-    assert!(star_fn.evaluate_global_context_with_args(args.clone()).is_err());
+    assert!(plus_fn
+        .evaluate_global_context_with_args(args.clone())
+        .is_err());
+    assert!(minus_fn
+        .evaluate_global_context_with_args(args.clone())
+        .is_ok());
+    assert!(star_fn
+        .evaluate_global_context_with_args(args.clone())
+        .is_err());
 
     let args = vector![int_min.clone(), int_max.clone()];
-    assert!(plus_fn.evaluate_global_context_with_args(args.clone()).is_ok());
-    assert!(minus_fn.evaluate_global_context_with_args(args.clone()).is_err());
-    assert!(star_fn.evaluate_global_context_with_args(args.clone()).is_err());
+    assert!(plus_fn
+        .evaluate_global_context_with_args(args.clone())
+        .is_ok());
+    assert!(minus_fn
+        .evaluate_global_context_with_args(args.clone())
+        .is_err());
+    assert!(star_fn
+        .evaluate_global_context_with_args(args.clone())
+        .is_err());
 }
 
 intrinsic_function!(
@@ -612,41 +896,82 @@ fn get_test() {
     let b = RuntimeValue::Keyword(Box::new(String::from("b")));
     let int0 = RuntimeValue::Integer(0);
     let int1 = RuntimeValue::Integer(1);
-    let map = RuntimeValue::Map(Box::new(hashmap! {a.clone() => int0.clone(), b.clone() => int1.clone() }));
-    let vec = RuntimeValue::Vector(Box::new(vector! [a.clone()]));
-    let set = RuntimeValue::Set(Box::new(hashset! [a.clone(), int0.clone()]));
+    let map = RuntimeValue::Map(Box::new(
+        hashmap! {a.clone() => int0.clone(), b.clone() => int1.clone() },
+    ));
+    let vec = RuntimeValue::Vector(Box::new(vector![a.clone()]));
+    let set = RuntimeValue::Set(Box::new(hashset![a.clone(), int0.clone()]));
 
     let get_fn = get::function();
 
     let args = vector![map.clone(), int0.clone()];
-    assert_eq!(RuntimeValue::None, get_fn.evaluate_global_context_with_args(args).unwrap());
+    assert_eq!(
+        RuntimeValue::None,
+        get_fn.evaluate_global_context_with_args(args).unwrap()
+    );
     let args = vector![map.clone(), int0.clone(), vec.clone()];
-    assert_eq!(vec.clone(), get_fn.evaluate_global_context_with_args(args).unwrap());
+    assert_eq!(
+        vec.clone(),
+        get_fn.evaluate_global_context_with_args(args).unwrap()
+    );
     let args = vector![map.clone(), a.clone()];
-    assert_eq!(int0.clone(), get_fn.evaluate_global_context_with_args(args).unwrap());
+    assert_eq!(
+        int0.clone(),
+        get_fn.evaluate_global_context_with_args(args).unwrap()
+    );
 
     let args = vector![vec.clone(), int1.clone()];
-    assert_eq!(RuntimeValue::None, get_fn.evaluate_global_context_with_args(args).unwrap());
+    assert_eq!(
+        RuntimeValue::None,
+        get_fn.evaluate_global_context_with_args(args).unwrap()
+    );
     let args = vector![vec.clone(), int1.clone(), int0.clone()];
-    assert_eq!(int0.clone(), get_fn.evaluate_global_context_with_args(args).unwrap());
+    assert_eq!(
+        int0.clone(),
+        get_fn.evaluate_global_context_with_args(args).unwrap()
+    );
     let args = vector![vec.clone(), int0.clone()];
-    assert_eq!(a.clone(), get_fn.evaluate_global_context_with_args(args).unwrap());
+    assert_eq!(
+        a.clone(),
+        get_fn.evaluate_global_context_with_args(args).unwrap()
+    );
 
     let args = vector![set.clone(), int1.clone()];
-    assert_eq!(RuntimeValue::None, get_fn.evaluate_global_context_with_args(args).unwrap());
+    assert_eq!(
+        RuntimeValue::None,
+        get_fn.evaluate_global_context_with_args(args).unwrap()
+    );
     let args = vector![set.clone(), int1.clone(), int0.clone()];
-    assert_eq!(int0.clone(), get_fn.evaluate_global_context_with_args(args).unwrap());
+    assert_eq!(
+        int0.clone(),
+        get_fn.evaluate_global_context_with_args(args).unwrap()
+    );
     let args = vector![set.clone(), int0.clone()];
-    assert_eq!(int0.clone(), get_fn.evaluate_global_context_with_args(args).unwrap());
+    assert_eq!(
+        int0.clone(),
+        get_fn.evaluate_global_context_with_args(args).unwrap()
+    );
 
     let args = vector![vec.clone(), a.clone()];
-    assert_eq!(RuntimeValue::None, get_fn.evaluate_global_context_with_args(args).unwrap());
+    assert_eq!(
+        RuntimeValue::None,
+        get_fn.evaluate_global_context_with_args(args).unwrap()
+    );
     let args = vector![vec.clone(), a.clone(), int0.clone()];
-    assert_eq!(int0.clone(), get_fn.evaluate_global_context_with_args(args).unwrap());
+    assert_eq!(
+        int0.clone(),
+        get_fn.evaluate_global_context_with_args(args).unwrap()
+    );
     let args = vector![a.clone(), a.clone()];
-    assert_eq!(RuntimeValue::None, get_fn.evaluate_global_context_with_args(args).unwrap());
+    assert_eq!(
+        RuntimeValue::None,
+        get_fn.evaluate_global_context_with_args(args).unwrap()
+    );
     let args = vector![a.clone(), a.clone(), int0.clone()];
-    assert_eq!(int0.clone(), get_fn.evaluate_global_context_with_args(args).unwrap());
+    assert_eq!(
+        int0.clone(),
+        get_fn.evaluate_global_context_with_args(args).unwrap()
+    );
 }
 
 intrinsic_function!(
@@ -681,34 +1006,75 @@ fn get_or_else_test() {
     let b = RuntimeValue::Keyword(Box::new(String::from("b")));
     let int0 = RuntimeValue::Integer(0);
     let int1 = RuntimeValue::Integer(1);
-    let map = RuntimeValue::Map(Box::new(hashmap! {a.clone() => int0.clone(), b.clone() => int1.clone() }));
-    let vec = RuntimeValue::Vector(Box::new(vector! [a.clone()]));
-    let set = RuntimeValue::Set(Box::new(hashset! [a.clone(), int0.clone()]));
+    let map = RuntimeValue::Map(Box::new(
+        hashmap! {a.clone() => int0.clone(), b.clone() => int1.clone() },
+    ));
+    let vec = RuntimeValue::Vector(Box::new(vector![a.clone()]));
+    let set = RuntimeValue::Set(Box::new(hashset![a.clone(), int0.clone()]));
 
-    let else_fn = RuntimeValue::Function(Arc::new(|_,_| Ok(RuntimeValue::Integer(1))));
+    let else_fn = RuntimeValue::Function(Arc::new(|_, _| Ok(RuntimeValue::Integer(1))));
 
     let get_or_else_fn = get_or_else::function();
 
-
     let args = vector![map.clone(), int0.clone(), else_fn.clone()];
-    assert_eq!(int1.clone(), get_or_else_fn.evaluate_global_context_with_args(args).unwrap());
+    assert_eq!(
+        int1.clone(),
+        get_or_else_fn
+            .evaluate_global_context_with_args(args)
+            .unwrap()
+    );
     let args = vector![map.clone(), a.clone(), else_fn.clone()];
-    assert_eq!(int0.clone(), get_or_else_fn.evaluate_global_context_with_args(args).unwrap());
+    assert_eq!(
+        int0.clone(),
+        get_or_else_fn
+            .evaluate_global_context_with_args(args)
+            .unwrap()
+    );
 
     let args = vector![vec.clone(), int1.clone(), else_fn.clone()];
-    assert_eq!(int1.clone(), get_or_else_fn.evaluate_global_context_with_args(args).unwrap());
+    assert_eq!(
+        int1.clone(),
+        get_or_else_fn
+            .evaluate_global_context_with_args(args)
+            .unwrap()
+    );
     let args = vector![vec.clone(), int0.clone(), else_fn.clone()];
-    assert_eq!(a.clone(), get_or_else_fn.evaluate_global_context_with_args(args).unwrap());
+    assert_eq!(
+        a.clone(),
+        get_or_else_fn
+            .evaluate_global_context_with_args(args)
+            .unwrap()
+    );
 
     let args = vector![set.clone(), int1.clone(), else_fn.clone()];
-    assert_eq!(int1.clone(), get_or_else_fn.evaluate_global_context_with_args(args).unwrap());
+    assert_eq!(
+        int1.clone(),
+        get_or_else_fn
+            .evaluate_global_context_with_args(args)
+            .unwrap()
+    );
     let args = vector![set.clone(), int0.clone(), else_fn.clone()];
-    assert_eq!(int0.clone(), get_or_else_fn.evaluate_global_context_with_args(args).unwrap());
+    assert_eq!(
+        int0.clone(),
+        get_or_else_fn
+            .evaluate_global_context_with_args(args)
+            .unwrap()
+    );
 
     let args = vector![vec.clone(), a.clone(), else_fn.clone()];
-    assert_eq!(int1.clone(), get_or_else_fn.evaluate_global_context_with_args(args).unwrap());
+    assert_eq!(
+        int1.clone(),
+        get_or_else_fn
+            .evaluate_global_context_with_args(args)
+            .unwrap()
+    );
     let args = vector![a.clone(), a.clone(), else_fn.clone()];
-    assert_eq!(int1.clone(), get_or_else_fn.evaluate_global_context_with_args(args).unwrap());
+    assert_eq!(
+        int1.clone(),
+        get_or_else_fn
+            .evaluate_global_context_with_args(args)
+            .unwrap()
+    );
 }
 
 intrinsic_function!(
@@ -758,7 +1124,7 @@ intrinsic_function!(
                         }
                         _ => unreachable!(),
                     }
-                    
+
                 }
             }
             (RuntimeValue::Vector(_)|RuntimeValue::List(_)|RuntimeValue::String(_)|RuntimeValue::Iterator(_),_) => {
@@ -812,7 +1178,7 @@ intrinsic_function!(
                         }
                         _ => unreachable!(),
                     }
-                    
+
                 }
             }
             (RuntimeValue::Vector(_)|RuntimeValue::List(_)|RuntimeValue::String(_)|RuntimeValue::Iterator(_),_) => {
@@ -831,40 +1197,66 @@ fn nth_test() {
     let int0 = RuntimeValue::Integer(0);
     let int1 = RuntimeValue::Integer(1);
     let int2 = RuntimeValue::Integer(2);
-    let vec = RuntimeValue::Vector(Box::new(vector! [a.clone(), b.clone()]));
-    let lst = RuntimeValue::List(Box::new(list! [a.clone(), b.clone()]));
+    let vec = RuntimeValue::Vector(Box::new(vector![a.clone(), b.clone()]));
+    let lst = RuntimeValue::List(Box::new(list![a.clone(), b.clone()]));
     let string = RuntimeValue::String(Box::new(String::from("ab")));
 
     let nth_fn = nth::function();
 
     let args = vector![vec.clone(), int0.clone()];
-    assert_eq!(a.clone(), nth_fn.evaluate_global_context_with_args(args).unwrap());
+    assert_eq!(
+        a.clone(),
+        nth_fn.evaluate_global_context_with_args(args).unwrap()
+    );
     let args = vector![vec.clone(), int1.clone()];
-    assert_eq!(b.clone(), nth_fn.evaluate_global_context_with_args(args).unwrap());
+    assert_eq!(
+        b.clone(),
+        nth_fn.evaluate_global_context_with_args(args).unwrap()
+    );
     let args = vector![vec.clone(), int2.clone()];
     assert!(nth_fn.evaluate_global_context_with_args(args).is_err());
     let args = vector![vec.clone(), int2.clone(), c.clone()];
-    assert_eq!(c.clone(), nth_fn.evaluate_global_context_with_args(args).unwrap());
+    assert_eq!(
+        c.clone(),
+        nth_fn.evaluate_global_context_with_args(args).unwrap()
+    );
 
     let args = vector![lst.clone(), int0.clone()];
-    assert_eq!(a.clone(), nth_fn.evaluate_global_context_with_args(args).unwrap());
+    assert_eq!(
+        a.clone(),
+        nth_fn.evaluate_global_context_with_args(args).unwrap()
+    );
     let args = vector![lst.clone(), int1.clone()];
-    assert_eq!(b.clone(), nth_fn.evaluate_global_context_with_args(args).unwrap());
+    assert_eq!(
+        b.clone(),
+        nth_fn.evaluate_global_context_with_args(args).unwrap()
+    );
     let args = vector![lst.clone(), int2.clone()];
     assert!(nth_fn.evaluate_global_context_with_args(args).is_err());
     let args = vector![lst.clone(), int2.clone(), c.clone()];
-    assert_eq!(c.clone(), nth_fn.evaluate_global_context_with_args(args).unwrap());
+    assert_eq!(
+        c.clone(),
+        nth_fn.evaluate_global_context_with_args(args).unwrap()
+    );
 
     let args = vector![string.clone(), int0.clone()];
-    assert_eq!(a.clone(), nth_fn.evaluate_global_context_with_args(args).unwrap());
+    assert_eq!(
+        a.clone(),
+        nth_fn.evaluate_global_context_with_args(args).unwrap()
+    );
     let args = vector![string.clone(), int1.clone()];
-    assert_eq!(b.clone(), nth_fn.evaluate_global_context_with_args(args).unwrap());
+    assert_eq!(
+        b.clone(),
+        nth_fn.evaluate_global_context_with_args(args).unwrap()
+    );
     let args = vector![string.clone(), int2.clone()];
     assert!(nth_fn.evaluate_global_context_with_args(args).is_err());
     let args = vector![string.clone(), int2.clone(), c.clone()];
-    assert_eq!(c.clone(), nth_fn.evaluate_global_context_with_args(args).unwrap());
+    assert_eq!(
+        c.clone(),
+        nth_fn.evaluate_global_context_with_args(args).unwrap()
+    );
 
-    
     let args = vector![vec.clone(), a.clone()];
     assert!(nth_fn.evaluate_global_context_with_args(args).is_err());
     let args = vector![lst.clone(), b.clone()];
@@ -922,7 +1314,7 @@ intrinsic_function!(
                         }
                         _ => unreachable!(),
                     }
-                    
+
                 }
             }
             (RuntimeValue::Vector(_)|RuntimeValue::List(_)|RuntimeValue::String(_)|RuntimeValue::Iterator(_),_) => {
@@ -941,44 +1333,96 @@ fn nth_or_else_test() {
     let int0 = RuntimeValue::Integer(0);
     let int1 = RuntimeValue::Integer(1);
     let int2 = RuntimeValue::Integer(2);
-    let vec = RuntimeValue::Vector(Box::new(vector! [a.clone(), b.clone()]));
-    let lst = RuntimeValue::List(Box::new(list! [a.clone(), b.clone()]));
+    let vec = RuntimeValue::Vector(Box::new(vector![a.clone(), b.clone()]));
+    let lst = RuntimeValue::List(Box::new(list![a.clone(), b.clone()]));
     let string = RuntimeValue::String(Box::new(String::from("ab")));
 
-    let else_fn = RuntimeValue::Function(Arc::new(|_,_| Ok(RuntimeValue::Character('c'))));
+    let else_fn = RuntimeValue::Function(Arc::new(|_, _| Ok(RuntimeValue::Character('c'))));
 
     let nth_or_else_fn = nth_or_else::function();
 
     let args = vector![vec.clone(), int0.clone(), else_fn.clone()];
-    assert_eq!(a.clone(), nth_or_else_fn.evaluate_global_context_with_args(args).unwrap());
+    assert_eq!(
+        a.clone(),
+        nth_or_else_fn
+            .evaluate_global_context_with_args(args)
+            .unwrap()
+    );
     let args = vector![vec.clone(), int1.clone(), else_fn.clone()];
-    assert_eq!(b.clone(), nth_or_else_fn.evaluate_global_context_with_args(args).unwrap());
+    assert_eq!(
+        b.clone(),
+        nth_or_else_fn
+            .evaluate_global_context_with_args(args)
+            .unwrap()
+    );
     let args = vector![vec.clone(), int2.clone(), else_fn.clone()];
-    assert_eq!(c.clone(), nth_or_else_fn.evaluate_global_context_with_args(args).unwrap());
+    assert_eq!(
+        c.clone(),
+        nth_or_else_fn
+            .evaluate_global_context_with_args(args)
+            .unwrap()
+    );
 
     let args = vector![lst.clone(), int0.clone(), else_fn.clone()];
-    assert_eq!(a.clone(), nth_or_else_fn.evaluate_global_context_with_args(args).unwrap());
+    assert_eq!(
+        a.clone(),
+        nth_or_else_fn
+            .evaluate_global_context_with_args(args)
+            .unwrap()
+    );
     let args = vector![lst.clone(), int1.clone(), else_fn.clone()];
-    assert_eq!(b.clone(), nth_or_else_fn.evaluate_global_context_with_args(args).unwrap());
+    assert_eq!(
+        b.clone(),
+        nth_or_else_fn
+            .evaluate_global_context_with_args(args)
+            .unwrap()
+    );
     let args = vector![lst.clone(), int2.clone(), else_fn.clone()];
-    assert_eq!(c.clone(), nth_or_else_fn.evaluate_global_context_with_args(args).unwrap());
+    assert_eq!(
+        c.clone(),
+        nth_or_else_fn
+            .evaluate_global_context_with_args(args)
+            .unwrap()
+    );
 
     let args = vector![string.clone(), int0.clone(), else_fn.clone()];
-    assert_eq!(a.clone(), nth_or_else_fn.evaluate_global_context_with_args(args).unwrap());
+    assert_eq!(
+        a.clone(),
+        nth_or_else_fn
+            .evaluate_global_context_with_args(args)
+            .unwrap()
+    );
     let args = vector![string.clone(), int1.clone(), else_fn.clone()];
-    assert_eq!(b.clone(), nth_or_else_fn.evaluate_global_context_with_args(args).unwrap());
+    assert_eq!(
+        b.clone(),
+        nth_or_else_fn
+            .evaluate_global_context_with_args(args)
+            .unwrap()
+    );
     let args = vector![string.clone(), int2.clone(), else_fn.clone()];
-    assert_eq!(c.clone(), nth_or_else_fn.evaluate_global_context_with_args(args).unwrap());
+    assert_eq!(
+        c.clone(),
+        nth_or_else_fn
+            .evaluate_global_context_with_args(args)
+            .unwrap()
+    );
 
-    
     let args = vector![vec.clone(), a.clone(), else_fn.clone()];
-    assert!(nth_or_else_fn.evaluate_global_context_with_args(args).is_err());
+    assert!(nth_or_else_fn
+        .evaluate_global_context_with_args(args)
+        .is_err());
     let args = vector![lst.clone(), b.clone(), else_fn.clone()];
-    assert!(nth_or_else_fn.evaluate_global_context_with_args(args).is_err());
+    assert!(nth_or_else_fn
+        .evaluate_global_context_with_args(args)
+        .is_err());
     let args = vector![string.clone(), c.clone(), else_fn.clone()];
-    assert!(nth_or_else_fn.evaluate_global_context_with_args(args).is_err());
+    assert!(nth_or_else_fn
+        .evaluate_global_context_with_args(args)
+        .is_err());
     let args = vector![c.clone(), c.clone(), else_fn.clone()];
-    assert!(nth_or_else_fn.evaluate_global_context_with_args(args).is_err());
+    assert!(nth_or_else_fn
+        .evaluate_global_context_with_args(args)
+        .is_err());
 }
 
 intrinsic_function!(
@@ -1048,7 +1492,7 @@ intrinsic_function!(
                         }
                         _ => unreachable!(),
                     }
-                    
+
                 }
             }
             (RuntimeValue::Vector(_)|RuntimeValue::List(_)|RuntimeValue::String(_)|RuntimeValue::Map(_)|RuntimeValue::Set(_)|RuntimeValue::Iterator(_),_) => {
@@ -1114,7 +1558,7 @@ intrinsic_function!(
                         RuntimeValue::Vector(mut v) if v.len() == 2 => Ok(v.pop_back().unwrap()),
                         _ => unreachable!(),
                     }
-                    
+
                 }
             }
             (RuntimeValue::Vector(_)|RuntimeValue::List(_)|RuntimeValue::String(_)|RuntimeValue::Map(_)|RuntimeValue::Set(_)|RuntimeValue::Iterator(_),_) => {
@@ -1161,7 +1605,7 @@ intrinsic_function!(
                         m.iter().map(|(k, v)| RuntimeValue::Vector(Box::new(vector![k.clone(),v.clone()]))).collect()
                     )))
                 }
-            } 
+            }
             RuntimeValue::Set(s) => {
                 if s.len() == 0 {
                     Ok(RuntimeValue::None)
@@ -1170,7 +1614,7 @@ intrinsic_function!(
                         s.iter().cloned().collect()
                     )))
                 }
-            } 
+            }
             RuntimeValue::Vector(v) => {
                 if v.len() == 0 {
                     Ok(RuntimeValue::None)
@@ -1179,7 +1623,7 @@ intrinsic_function!(
                         v.iter().rev().cloned().collect()
                     )))
                 }
-            } 
+            }
             RuntimeValue::String(s) => {
                 if s.len() == 0 {
                     Ok(RuntimeValue::None)
@@ -1200,7 +1644,7 @@ intrinsic_function!(
                                     it = rest_it;
                                     Some(Ok(v.pop_front().unwrap()))
                                 }
-                            }    
+                            }
                         }
                         e @ Err(_) => Some(e),
                         _ => unreachable!(),
@@ -1233,7 +1677,7 @@ intrinsic_function!(
                         m.iter().map(|(k, v)| RuntimeValue::Vector(Box::new(vector![k.clone(),v.clone()]))).collect()
                     )))
                 }
-            } 
+            }
             RuntimeValue::Set(s) => {
                 if s.len() == 0 {
                     Ok(RuntimeValue::List(Box::new(List::empty())))
@@ -1242,7 +1686,7 @@ intrinsic_function!(
                         s.iter().cloned().collect()
                     )))
                 }
-            } 
+            }
             RuntimeValue::Vector(v) => {
                 if v.len() == 0 {
                     Ok(RuntimeValue::List(Box::new(List::empty())))
@@ -1251,7 +1695,7 @@ intrinsic_function!(
                         v.iter().rev().cloned().collect()
                     )))
                 }
-            } 
+            }
             RuntimeValue::String(s) => {
                 if s.len() == 0 {
                     Ok(RuntimeValue::List(Box::new(List::empty())))
@@ -1272,7 +1716,7 @@ intrinsic_function!(
                                     it = rest_it;
                                     Some(Ok(v.pop_front().unwrap()))
                                 }
-                            }    
+                            }
                         }
                         e @ Err(_) => Some(e),
                         _ => unreachable!(),
@@ -1301,7 +1745,7 @@ intrinsic_function!(
                     let (k, v) = m.iter().next().unwrap();
                     Ok(RuntimeValue::Vector(Box::new(vector![k.clone(), v.clone()])))
                 }
-            } 
+            }
             RuntimeValue::Set(s) => {
                 if s.len() == 0 {
                     Ok(RuntimeValue::None)
@@ -1713,7 +2157,7 @@ intrinsic_function!(
                             match args.len() {
                                 0 => {
                                     let (k, v) = m.iter().next().unwrap();
-                                    Ok(vector![vector![k.clone(), v.clone()].into(), 
+                                    Ok(vector![vector![k.clone(), v.clone()].into(),
                                                 iter::internal1(&m.without(k).into())?].into())
                                 },
                                 1 => match &args[0] {
@@ -1731,7 +2175,7 @@ intrinsic_function!(
                                                 let (k_, v_)= m.iter().next().unwrap();
                                                 k = k_; v= v_;
                                             }
-                                            Ok(vector![vector![k.clone(), v.clone()].into(), 
+                                            Ok(vector![vector![k.clone(), v.clone()].into(),
                                                         iter::internal1(&m.without(k).into())?].into())
                                         } else {
                                             Ok(vector![RuntimeValue::None, RuntimeValue::None].into())
@@ -1970,4 +2414,3 @@ intrinsic_function!(
         }
     }
 );
-
