@@ -16,9 +16,9 @@ pub mod runtime;
 
 pub mod error;
 
-pub mod intrinsic_move;
+//pub mod intrinsic_move;
 
-pub mod intrinsic;
+mod intrinsic;
 
 pub use num;
 

@@ -85,6 +85,7 @@ impl Context {
                 String::from("concat") => intrinsic::concat::function(),
                 String::from("apply") => intrinsic::apply::function(),
                 String::from("into") => intrinsic::into::function(),
+                String::from("iter") => intrinsic::iter::function(),
             },
         }
     }
@@ -155,6 +156,7 @@ pub enum RuntimeValue {
     Unquote(Box<List<RuntimeValue>>),
     Form(Box<Form>),
     Reference(Arc<dyn Any + Send + Sync>),
+    Iterator(Arc<dyn Fn(Context, Vector<RuntimeValue>) -> RuntimeResult + Send + Sync>),
     Function(Arc<dyn Fn(Context, Vector<RuntimeValue>) -> RuntimeResult + Send + Sync>),
     Evaluation(Arc<dyn Fn(Context) -> RuntimeResult + Send + Sync>),
     ContextLookup(Arc<dyn Fn(Context) -> RuntimeResult + Send + Sync>),
@@ -259,6 +261,7 @@ impl RuntimeValue {
                 n => Err(RuntimeError::new(ArityError::new(n, String::from("Map")))),
             },
             RuntimeValue::Function(f) => (f)(context, args),
+            RuntimeValue::Iterator(f) => (f)(context, args),
             _ => Ok(self.clone()),
         }
     }
@@ -318,6 +321,7 @@ impl RuntimeValue {
                     .collect::<Result<Vec<_>, _>>()?
                     .join(" ")
             )),
+            RuntimeValue::Iterator(_) => todo!(),
             RuntimeValue::Form(f) => Ok(f.unparse()),
             RuntimeValue::Reference(_) => todo!(),
             RuntimeValue::Function(_) => todo!(),
@@ -382,6 +386,7 @@ impl fmt::Debug for RuntimeValue {
             RuntimeValue::Evaluation(r) => f.write_fmt(format_args!("EV{:?}", Arc::as_ptr(r))),
             RuntimeValue::ContextLookup(r) => f.write_fmt(format_args!("LU{:?}", Arc::as_ptr(r))),
             RuntimeValue::Macro(r) => f.write_fmt(format_args!("MC{:?}", Arc::as_ptr(r))),
+            RuntimeValue::Iterator(r) => f.write_fmt(format_args!("IT{:?}", Arc::as_ptr(r))),
         }
     }
 }
@@ -425,6 +430,10 @@ impl PartialEq for RuntimeValue {
             | (RuntimeValue::List(l), RuntimeValue::Vector(v)) => {
                 v.len() == l.len() && v.iter().zip(l.iter()).all(|(e1, e2)| *e1 == e2)
             }
+            (RuntimeValue::Iterator(r1), RuntimeValue::Iterator(r2)) => {
+                // TODO: Iterators should be sequenced and then checked for equality. Iters should rarely be used as keys in hashmaps
+                Arc::as_ptr(r1) == Arc::as_ptr(r2)
+            }
 
             (_, _) => false,
         }
@@ -462,6 +471,10 @@ impl Hash for RuntimeValue {
             RuntimeValue::Evaluation(r) => Arc::as_ptr(r).hash(state),
             RuntimeValue::ContextLookup(r) => Arc::as_ptr(r).hash(state),
             RuntimeValue::Macro(r) => Arc::as_ptr(r).hash(state),
+            RuntimeValue::Iterator(r) => {
+                // TODO: Iterators should be sequenced and then checked for equality. Iters should rarely be used as keys in hashmaps
+                Arc::as_ptr(r).hash(state)
+            }
         }
     }
 }
@@ -539,7 +552,7 @@ mod tests {
         // let d = size_of::<Box<Vector<RuntimeValue>>>();
         // let e = size_of::<Box<dyn Any>>();
         // let f = size_of::<List<RuntimeValue>>();
-        assert!(z - size_of::<usize>() >= 2 * x);
+        assert!(z - size_of::<usize>() >= 2 * x, "x: {}", x);
     }
 
     #[test]

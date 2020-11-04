@@ -598,7 +598,7 @@ intrinsic_function!(
                     Ok(default.clone())
                 }
             }
-            (RuntimeValue::Vector(_) | RuntimeValue::List(_) | RuntimeValue::String(_), RuntimeValue::Integer(_)) => {
+            (RuntimeValue::Vector(_) | RuntimeValue::List(_) | RuntimeValue::String(_) | RuntimeValue::Iterator(_), RuntimeValue::Integer(_)) => {
                 nth::internal3(collection, key, default)
             }
             _ => {Ok(default.clone())}
@@ -667,7 +667,7 @@ intrinsic_function!(
                     else_fn.evaluate_global_context_with_args(Vector::new())
                 }
             }
-            (RuntimeValue::Vector(_) | RuntimeValue::List(_) | RuntimeValue::String(_), RuntimeValue::Integer(_)) => {
+            (RuntimeValue::Vector(_) | RuntimeValue::List(_) | RuntimeValue::String(_) | RuntimeValue::Iterator(_), RuntimeValue::Integer(_)) => {
                 nth_or_else::internal3(collection, key, else_fn)
             }
             _ => { else_fn.evaluate_global_context_with_args(Vector::new()) }
@@ -744,7 +744,24 @@ intrinsic_function!(
                     Err(RuntimeError::new(GeneralError::new(String::from(format!("Index out of range {:?}", n)))))
                 }
             }
-            (RuntimeValue::Vector(_)|RuntimeValue::List(_)|RuntimeValue::String(_),_) => {
+            (RuntimeValue::Iterator(_), RuntimeValue::Integer(n)) => {
+                let n = *n;
+                if n < 0 {
+                    Err(RuntimeError::new(GeneralError::new(String::from(format!("Index out of range {:?}", n)))))
+                } else {
+                    match collection.evaluate_global_context_with_args(vector![n.into()])? {
+                        RuntimeValue::Vector(mut v) if v.len() == 2 => {
+                            match v.last().unwrap() {
+                                RuntimeValue::None => Err(RuntimeError::new(GeneralError::new(String::from(format!("Index out of range {:?}", n))))),
+                                _ => Ok(v.pop_front().unwrap())
+                            }
+                        }
+                        _ => unreachable!(),
+                    }
+                    
+                }
+            }
+            (RuntimeValue::Vector(_)|RuntimeValue::List(_)|RuntimeValue::String(_)|RuntimeValue::Iterator(_),_) => {
                 Err(RuntimeError::new(GeneralError::new(String::from(format!("Index must be an integer")))))
             }
             _ => {Err(RuntimeError::new(GeneralError::new(String::from(format!("nth not supported for ({:?})", collection)))))}
@@ -781,7 +798,24 @@ intrinsic_function!(
                     Ok(default.clone())
                 }
             }
-            (RuntimeValue::Vector(_)|RuntimeValue::List(_)|RuntimeValue::String(_),_) => {
+            (RuntimeValue::Iterator(_), RuntimeValue::Integer(n)) => {
+                let n = *n;
+                if n < 0 {
+                    Ok(default.clone())
+                } else {
+                    match collection.evaluate_global_context_with_args(vector![n.into()])? {
+                        RuntimeValue::Vector(mut v) if v.len() == 2 => {
+                            match v.last().unwrap() {
+                                RuntimeValue::None => Ok(default.clone()),
+                                _ => Ok(v.pop_front().unwrap())
+                            }
+                        }
+                        _ => unreachable!(),
+                    }
+                    
+                }
+            }
+            (RuntimeValue::Vector(_)|RuntimeValue::List(_)|RuntimeValue::String(_)|RuntimeValue::Iterator(_),_) => {
                 Err(RuntimeError::new(GeneralError::new(String::from(format!("Index must be an integer")))))
             }
             _ => {Err(RuntimeError::new(GeneralError::new(String::from(format!("nth not supported for ({:?})", collection)))))}
@@ -874,7 +908,24 @@ intrinsic_function!(
                     else_fn.evaluate_global_context_with_args(Vector::new())
                 }
             }
-            (RuntimeValue::Vector(_)|RuntimeValue::List(_)|RuntimeValue::String(_),_) => {
+            (RuntimeValue::Iterator(_), RuntimeValue::Integer(n)) => {
+                let n = *n;
+                if n < 0 {
+                    else_fn.evaluate_global_context_with_args(Vector::new())
+                } else {
+                    match collection.evaluate_global_context_with_args(vector![n.into()])? {
+                        RuntimeValue::Vector(mut v) if v.len() == 2 => {
+                            match v.last().unwrap() {
+                                RuntimeValue::None => else_fn.evaluate_global_context_with_args(Vector::new()),
+                                _ => Ok(v.pop_front().unwrap())
+                            }
+                        }
+                        _ => unreachable!(),
+                    }
+                    
+                }
+            }
+            (RuntimeValue::Vector(_)|RuntimeValue::List(_)|RuntimeValue::String(_)|RuntimeValue::Iterator(_),_) => {
                 Err(RuntimeError::new(GeneralError::new(String::from(format!("Index must be an integer")))))
             }
             _ => {Err(RuntimeError::new(GeneralError::new(String::from(format!("nth not supported for ({:?})", collection)))))}
@@ -981,7 +1032,26 @@ intrinsic_function!(
                     Ok(RuntimeValue::Vector(Box::new(s.iter().skip(n as usize).cloned().collect())))
                 }
             }
-            (RuntimeValue::Vector(_)|RuntimeValue::List(_)|RuntimeValue::String(_)|RuntimeValue::Map(_)|RuntimeValue::Set(_),_) => {
+            (RuntimeValue::Iterator(_), RuntimeValue::Integer(n)) => {
+                let n = *n;
+                if n < 0 {
+                    Err(RuntimeError::new(GeneralError::new(String::from(format!("Negative index{:?}", n)))))
+                } else if n == 0 {
+                    Ok(collection.clone())
+                } else {
+                    match collection.evaluate_global_context_with_args(vector![(n-1).into()])? {
+                        RuntimeValue::Vector(mut v) if v.len() == 2 => {
+                            match v.pop_back().unwrap() {
+                                RuntimeValue::None => iter::internal0(),
+                                v => Ok(v)
+                            }
+                        }
+                        _ => unreachable!(),
+                    }
+                    
+                }
+            }
+            (RuntimeValue::Vector(_)|RuntimeValue::List(_)|RuntimeValue::String(_)|RuntimeValue::Map(_)|RuntimeValue::Set(_)|RuntimeValue::Iterator(_),_) => {
                 Err(RuntimeError::new(GeneralError::new(String::from(format!("Index must be an integer")))))
             }
             _ => {Err(RuntimeError::new(GeneralError::new(String::from(format!("nthrest not supported for ({:?})", collection)))))}
@@ -1010,6 +1080,7 @@ intrinsic_function!(
             (RuntimeValue::String(s), RuntimeValue::Integer(n)) => {
                 match *n {
                     n if n < 0 => Err(RuntimeError::new(GeneralError::new(String::from(format!("Negative index{:?}", n))))),
+                    // TODO: Fix iterating over chars() twice.
                     n if n as usize >= s.chars().count() => Ok(RuntimeValue::None),
                     n => Ok(RuntimeValue::Vector(Box::new(s.chars().into_iter().skip(n as usize).map(|c|
                             RuntimeValue::Character(c)).collect()))),
@@ -1032,7 +1103,21 @@ intrinsic_function!(
                     n =>  Ok(RuntimeValue::Vector(Box::new(s.iter().skip(n as usize).cloned().collect()))),
                 }
             }
-            (RuntimeValue::Vector(_)|RuntimeValue::List(_)|RuntimeValue::String(_)|RuntimeValue::Map(_)|RuntimeValue::Set(_),_) => {
+            (RuntimeValue::Iterator(_), RuntimeValue::Integer(n)) => {
+                let n = *n;
+                if n < 0 {
+                    Err(RuntimeError::new(GeneralError::new(String::from(format!("Negative index{:?}", n)))))
+                } else if n == 0 {
+                    Ok(collection.clone())
+                } else {
+                    match collection.evaluate_global_context_with_args(vector![(n-1).into()])? {
+                        RuntimeValue::Vector(mut v) if v.len() == 2 => Ok(v.pop_back().unwrap()),
+                        _ => unreachable!(),
+                    }
+                    
+                }
+            }
+            (RuntimeValue::Vector(_)|RuntimeValue::List(_)|RuntimeValue::String(_)|RuntimeValue::Map(_)|RuntimeValue::Set(_)|RuntimeValue::Iterator(_),_) => {
                 Err(RuntimeError::new(GeneralError::new(String::from(format!("Index must be an integer")))))
             }
             _ => {Err(RuntimeError::new(GeneralError::new(String::from(format!("nthrest not supported for ({:?})", collection)))))}
@@ -1047,9 +1132,10 @@ intrinsic_function!(
             RuntimeValue::List(l) => {
                 Ok(RuntimeValue::List(Box::new(List::cons(element.clone(),l.as_ref()))))
             },
-            RuntimeValue::Map(_) | RuntimeValue::Set(_) | RuntimeValue::Vector(_) => {
+            RuntimeValue::Map(_) | RuntimeValue::Set(_) | RuntimeValue::Vector(_) | RuntimeValue::String(_) => {
                 cons::internal2(element, &seq::internal1(collection)?)
             }
+            // TODO Add iterator? Should cons seq the iterator or alias chain?
             RuntimeValue::None => Ok(RuntimeValue::List(Box::new(list!(element.clone())))),
             _ => {Err(RuntimeError::new(GeneralError::new(String::from(format!("cons not supported for ({:?})", collection)))))}
         }
@@ -1103,6 +1189,30 @@ intrinsic_function!(
                     )))
                 }
             }
+            RuntimeValue::Iterator(_) => {
+                let mut it = collection.clone();
+                let v: Result<Vec<_>,_> = std::iter::from_fn(move || {
+                    match it.evaluate_global_context_with_args(vector![]) {
+                        Ok(RuntimeValue::Vector(mut v)) if v.len() == 2 => {
+                            match v.pop_back().unwrap() {
+                                RuntimeValue::None => None,
+                                rest_it => {
+                                    it = rest_it;
+                                    Some(Ok(v.pop_front().unwrap()))
+                                }
+                            }    
+                        }
+                        e @ Err(_) => Some(e),
+                        _ => unreachable!(),
+                    }
+                }).collect();
+                let v = v?;
+                if v.len() == 0 {
+                    Ok(RuntimeValue::None)
+                } else {
+                    Ok(RuntimeValue::List(Box::new(v.into_iter().rev().collect())))
+                }
+            }
             _ => {Err(RuntimeError::new(GeneralError::new(String::from(format!("seq not supported for ({:?})", collection)))))}
         }
     }
@@ -1151,6 +1261,26 @@ intrinsic_function!(
                     )))
                 }
             }
+            RuntimeValue::Iterator(_) => {
+                let mut it = collection.clone();
+                let v: Result<Vec<_>,_> = std::iter::from_fn(move || {
+                    match it.evaluate_global_context_with_args(vector![]) {
+                        Ok(RuntimeValue::Vector(mut v)) if v.len() == 2 => {
+                            match v.pop_back().unwrap() {
+                                RuntimeValue::None => None,
+                                rest_it => {
+                                    it = rest_it;
+                                    Some(Ok(v.pop_front().unwrap()))
+                                }
+                            }    
+                        }
+                        e @ Err(_) => Some(e),
+                        _ => unreachable!(),
+                    }
+                }).collect();
+                let v = v?;
+                Ok(RuntimeValue::List(Box::new(v.into_iter().rev().collect())))
+            }
             _ => {Err(RuntimeError::new(GeneralError::new(String::from(format!("seq not supported for ({:?})", collection)))))}
         }
     }
@@ -1161,7 +1291,7 @@ intrinsic_function!(
     function (collection) {
         match collection {
             RuntimeValue::None => Ok(RuntimeValue::None),
-            RuntimeValue::List(_) | RuntimeValue::Vector(_) | RuntimeValue::String(_) => {
+            RuntimeValue::List(_) | RuntimeValue::Vector(_) | RuntimeValue::String(_) | RuntimeValue::Iterator(_) => {
                 nth::internal3(collection, &RuntimeValue::Integer(0), &RuntimeValue::None)
             }
             RuntimeValue::Map(m) => {
@@ -1189,7 +1319,7 @@ intrinsic_function!(
     function (collection) {
         match collection {
             RuntimeValue::None => Ok(RuntimeValue::List(Box::new(List::empty()))),
-            RuntimeValue::List(_) | RuntimeValue::Vector(_) | RuntimeValue::String(_) | RuntimeValue::Map(_) |RuntimeValue::Set(_)=> {
+            RuntimeValue::List(_) | RuntimeValue::Vector(_) | RuntimeValue::String(_) | RuntimeValue::Map(_) |RuntimeValue::Set(_) | RuntimeValue::Iterator(_) => {
                 nthrest::internal2(collection, &RuntimeValue::Integer(1))
             }
             _ => {Err(RuntimeError::new(GeneralError::new(String::from(format!("rest not supported for ({:?})", collection)))))}
@@ -1202,7 +1332,7 @@ intrinsic_function!(
     function (collection) {
         match collection {
             RuntimeValue::None => Ok(RuntimeValue::List(Box::new(List::empty()))),
-            RuntimeValue::List(_) | RuntimeValue::Vector(_) | RuntimeValue::String(_) | RuntimeValue::Map(_) |RuntimeValue::Set(_)=> {
+            RuntimeValue::List(_) | RuntimeValue::Vector(_) | RuntimeValue::String(_) | RuntimeValue::Map(_) |RuntimeValue::Set(_) | RuntimeValue::Iterator(_) => {
                 nthnext::internal2(collection, &RuntimeValue::Integer(1))
             }
             _ => {Err(RuntimeError::new(GeneralError::new(String::from(format!("next not supported for ({:?})", collection)))))}
@@ -1252,6 +1382,7 @@ intrinsic_function!(
         match more {
             RuntimeValue::None => Ok(RuntimeValue::List(Box::new(List::empty()))),
             RuntimeValue::Vector(v) => {
+                // TODO Add iterator? Should concat seq the iterator or alias chain?
                 let seqs: Result<Vec<_>,_> =
                 v.iter().map(|v| sequence::internal1(v))
                 .flat_map(|value| match value {
@@ -1482,6 +1613,8 @@ intrinsic_function!(
                 Ok(RuntimeValue::String(Box::new(format!("{}{}",s1.as_ref() ,s2.as_ref()))))
             }
 
+            // TODO Add iterator support. How should this work? into iter is just chain.
+
             (_,_) => Err(RuntimeError::new(GeneralError::new(String::from(format!("into not supported for ({:?} into {:?})", from, to))))),
         }
     }
@@ -1520,3 +1653,321 @@ intrinsic_function!(
 
     }
 );
+
+intrinsic_function!(
+    iter
+    function () {
+        Ok(RuntimeValue::Iterator(Arc::new(
+            move |_,_| {
+                Ok(RuntimeValue::Vector(Box::new(vector![RuntimeValue::None,RuntimeValue::None])))
+            }
+        )))
+    }
+    function (c) {
+        let c = c.clone();
+        match c {
+            RuntimeValue::Vector(v) => {
+                if v.is_empty() {
+                    iter::internal0()
+                } else {
+                    Ok(RuntimeValue::Iterator(Arc::new(
+                        move |_,args| {
+                            match args.len() {
+                                0 => {
+                                    let mut v = v.as_ref().clone();
+                                    Ok(vector![v.pop_front().unwrap(), iter::internal1(&v.into())?].into())
+                                },
+                                1 => match &args[0] {
+                                    RuntimeValue::Integer(n) => {
+                                        let n = *n;
+                                        if n < 0 {
+                                            Err(RuntimeError::new(GeneralError::new(String::from(
+                                                "Index into iterator cannot be negative",
+                                            ))))
+                                        } else if (n as usize) < v.len() {
+                                            let n = n as usize;
+                                            Ok(vector![v[n].clone(), iter::internal1(&v.skip(n + 1).into())?].into())
+                                        } else {
+                                            Ok(vector![RuntimeValue::None, RuntimeValue::None].into())
+                                        }
+                                    }
+                                    _ => Err(RuntimeError::new(GeneralError::new(String::from(
+                                        "Index into iterator must be an integer.",
+                                    )))),
+                                },
+                                n => Err(RuntimeError::new(ArityError::new(
+                                    n,
+                                    String::from("Iter"),
+                                ))),
+                            }
+                        }
+                    )))
+                }
+            }
+            RuntimeValue::Map(m) => {
+                if m.is_empty() {
+                    iter::internal0()
+                } else {
+                    Ok(RuntimeValue::Iterator(Arc::new(
+                        move |_,args| {
+                            match args.len() {
+                                0 => {
+                                    let (k, v) = m.iter().next().unwrap();
+                                    Ok(vector![vector![k.clone(), v.clone()].into(), 
+                                                iter::internal1(&m.without(k).into())?].into())
+                                },
+                                1 => match &args[0] {
+                                    RuntimeValue::Integer(n) => {
+                                        let n = *n;
+                                        if n < 0 {
+                                            Err(RuntimeError::new(GeneralError::new(String::from(
+                                                "Index into iterator cannot be negative",
+                                            ))))
+                                        } else if (n as usize) < m.len() {
+                                            let (mut k, mut v) = m.iter().next().unwrap();
+                                            let mut m = m.as_ref().clone();
+                                            for _ in 0..n {
+                                                m = m.without(k);
+                                                let (k_, v_)= m.iter().next().unwrap();
+                                                k = k_; v= v_;
+                                            }
+                                            Ok(vector![vector![k.clone(), v.clone()].into(), 
+                                                        iter::internal1(&m.without(k).into())?].into())
+                                        } else {
+                                            Ok(vector![RuntimeValue::None, RuntimeValue::None].into())
+                                        }
+                                    }
+                                    _ => Err(RuntimeError::new(GeneralError::new(String::from(
+                                        "Index into iterator must be an integer.",
+                                    )))),
+                                },
+                                n => Err(RuntimeError::new(ArityError::new(
+                                    n,
+                                    String::from("Iter"),
+                                ))),
+                            }
+                        }
+                    )))
+                }
+            }
+            RuntimeValue::Set(s) => {
+                if s.is_empty() {
+                    iter::internal0()
+                } else {
+                    Ok(RuntimeValue::Iterator(Arc::new(
+                        move |_,args| {
+                            match args.len() {
+                                0 => {
+                                    let v = s.iter().next().unwrap();
+                                    Ok(vector![v.clone(),iter::internal1(&s.without(v).into())?].into())
+                                },
+                                1 => match &args[0] {
+                                    RuntimeValue::Integer(n) => {
+                                        let n = *n;
+                                        if n < 0 {
+                                            Err(RuntimeError::new(GeneralError::new(String::from(
+                                                "Index into iterator cannot be negative",
+                                            ))))
+                                        } else if (n as usize) < s.len() {
+                                            let mut v = s.iter().next().unwrap();
+                                            let mut s = s.as_ref().clone();
+                                            for _ in 0..n {
+                                                s = s.without(v);
+                                                v = s.iter().next().unwrap();
+                                            }
+                                            Ok(vector![v.clone(), iter::internal1(&s.without(v).into())?].into())
+                                        } else {
+                                            Ok(vector![RuntimeValue::None, RuntimeValue::None].into())
+                                        }
+                                    }
+                                    _ => Err(RuntimeError::new(GeneralError::new(String::from(
+                                        "Index into iterator must be an integer.",
+                                    )))),
+                                },
+                                n => Err(RuntimeError::new(ArityError::new(
+                                    n,
+                                    String::from("Iter"),
+                                ))),
+                            }
+                        }
+                    )))
+                }
+            }
+            RuntimeValue::List(l) => {
+                if l.is_empty() {
+                    iter::internal0()
+                } else {
+                    Ok(RuntimeValue::Iterator(Arc::new(
+                        move |_,args| {
+                            match args.len() {
+                                0 => {
+                                    let v = l.first().unwrap();
+                                    Ok(vector![v.clone(),iter::internal1(&l.rest().into())?].into())
+                                },
+                                1 => match &args[0] {
+                                    RuntimeValue::Integer(n) => {
+                                        let n = *n;
+                                        if n < 0 {
+                                            Err(RuntimeError::new(GeneralError::new(String::from(
+                                                "Index into iterator cannot be negative",
+                                            ))))
+                                        } else if (n as usize) < l.len() {
+                                            let l = l.skip(n as usize);
+                                            let v = l.first().unwrap();
+                                            Ok(vector![v.clone(),iter::internal1(&l.rest().into())?].into())
+                                        } else {
+                                            Ok(vector![RuntimeValue::None, RuntimeValue::None].into())
+                                        }
+                                    }
+                                    _ => Err(RuntimeError::new(GeneralError::new(String::from(
+                                        "Index into iterator must be an integer.",
+                                    )))),
+                                },
+                                n => Err(RuntimeError::new(ArityError::new(
+                                    n,
+                                    String::from("Iter"),
+                                ))),
+                            }
+                        }
+                    )))
+                }
+            }
+            RuntimeValue::String(s) => {
+                if s.is_empty() {
+                    iter::internal0()
+                } else {
+                    Ok(RuntimeValue::Iterator(Arc::new(
+                        move |_,args| {
+                            match args.len() {
+                                0 => {
+                                    let mut s = s.as_ref().clone();
+                                    Ok(vector![s.pop().unwrap().into(), iter::internal1(&s.into())?].into())
+                                },
+                                1 => match &args[0] {
+                                    RuntimeValue::Integer(n) => {
+                                        let n = *n;
+                                        if n < 0 {
+                                            Err(RuntimeError::new(GeneralError::new(String::from(
+                                                "Index into iterator cannot be negative",
+                                            ))))
+                                        } else if (n as usize) < s.len() {
+                                            let mut s = s.chars().skip(n as usize).collect::<String>();
+                                            Ok(vector![s.pop().unwrap().into(), iter::internal1(&s.into())?].into())
+                                        } else {
+                                            Ok(vector![RuntimeValue::None, RuntimeValue::None].into())
+                                        }
+                                    }
+                                    _ => Err(RuntimeError::new(GeneralError::new(String::from(
+                                        "Index into iterator must be an integer.",
+                                    )))),
+                                },
+                                n => Err(RuntimeError::new(ArityError::new(
+                                    n,
+                                    String::from("Iter"),
+                                ))),
+                            }
+                        }
+                    )))
+                }
+            }
+            c @ RuntimeValue::Function(_) => {
+                iter::internal2(&c.evaluate_global_context_with_args(vector![].into())?, &c)
+            }
+            c @ RuntimeValue::Iterator(_) => Ok(c),
+            c => Ok(RuntimeValue::Iterator(Arc::new(
+                move |_,args| {
+                    match args.len() {
+                        0 => {
+                            Ok(vector![c.clone(), iter::internal0()?].into())
+                        },
+                        1 => match &args[0] {
+                            RuntimeValue::Integer(n) => {
+                                let n = *n;
+                                if n < 0 {
+                                    Err(RuntimeError::new(GeneralError::new(String::from(
+                                        "Index into iterator cannot be negative",
+                                    ))))
+                                } else if n < 1 {
+                                    Ok(vector![c.clone(), iter::internal0()?].into())
+                                } else {
+                                    Ok(vector![RuntimeValue::None, RuntimeValue::None].into())
+                                }
+                            }
+                            _ => Err(RuntimeError::new(GeneralError::new(String::from(
+                                "Index into iterator must be an integer.",
+                            )))),
+                        },
+                        n => Err(RuntimeError::new(ArityError::new(
+                            n,
+                            String::from("Iter"),
+                        ))),
+                    }
+                }
+            )))
+        }
+    }
+    function (initial, function) {
+        match function {
+            RuntimeValue::Function(_) => {
+                let initial = initial.clone();
+                let f = function.clone();
+                Ok(RuntimeValue::Iterator(Arc::new(
+                    move |_, args| {
+                        match args.len() {
+                            0 => {
+                                if let RuntimeValue::Vector(mut v) = f.evaluate_global_context_with_args(vector![initial.clone()])? {
+                                    if v.len() == 2 {
+                                        Ok(vector![v.pop_front().unwrap(), iter::internal2(&v.pop_front().unwrap(), &f)?].into())
+                                    } else if v.len() == 1 {
+                                        Ok(vector![v.pop_front().unwrap(), iter::internal0()?].into())
+                                    } else {
+                                        Err(RuntimeError::new(GeneralError::new(String::from(
+                                            "Iter function must contain signature: state -> [next, state?])",
+                                        ))))
+                                    }
+                                } else {
+                                    Err(RuntimeError::new(GeneralError::new(String::from(
+                                        "Iter function must contain signature: state -> [next, state?])",
+                                    ))))
+                                }
+                            },
+                            1 => match &args[0] {
+                                RuntimeValue::Integer(n) => {
+                                    let n = *n;
+                                    if n < 0 {
+                                        Err(RuntimeError::new(GeneralError::new(String::from(
+                                            "Index into iterator cannot be negative",
+                                        ))))
+                                    } else if let RuntimeValue::Vector(mut v) = f.evaluate_global_context_with_args(vector![initial.clone(), n.into()])? {
+                                        if v.len() == 2 {
+                                            Ok(vector![v.pop_front().unwrap(), iter::internal2(&v.pop_front().unwrap(), &f)?].into())
+                                        } else if v.len() == 1 {
+                                            Ok(vector![v.pop_front().unwrap(), iter::internal0()?].into())
+                                        } else {
+                                            Err(RuntimeError::new(GeneralError::new(String::from(
+                                                "Iter function must contain signature: state, count -> [next, state?])",
+                                            ))))
+                                        }
+                                    } else {
+                                        Err(RuntimeError::new(GeneralError::new(String::from(
+                                            "Iter function must contain signature: state, count -> [next, state?])",
+                                        ))))
+                                    }
+                                }
+                                _ => Err(RuntimeError::new(GeneralError::new(String::from(
+                                    "Index into iterator must be an integer.",
+                                )))),
+                            },
+                            n => Err(RuntimeError::new(ArityError::new(
+                                n,
+                                String::from("Iter"),
+                            ))),
+                        }
+                    }
+                )))
+            }
+            other => Err(RuntimeError::new(GeneralError::new(format!("Iter requires type ({:?}) to be a function", other))))
+        }
+    }
+);
+
