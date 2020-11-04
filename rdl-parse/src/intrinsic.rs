@@ -2442,3 +2442,20 @@ intrinsic_function!(
         )
     }
 );
+
+intrinsic_function!(
+    /// repeat is used to create an iterator which always returns the same value indefinitely
+    repeat
+    function (value) {
+        let value = value.clone();
+        create_iterator!(
+            "Repeat Iterator",
+            _ => {
+                Ok(vector![value.clone(), repeat::internal1(&value)?].into())
+            },
+            n => {
+                Ok(vector![value.clone(), repeat::internal1(&value)?, (n+1).into()].into())
+            }
+        )
+    }
+);
