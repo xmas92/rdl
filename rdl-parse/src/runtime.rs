@@ -88,6 +88,7 @@ impl Context {
                 String::from("iter") => intrinsic::iter::function(),
                 String::from("chain") => intrinsic::chain::function(),
                 String::from("repeat") => intrinsic::repeat::function(),
+                String::from("take") => intrinsic::take::function(),
             },
         }
     }

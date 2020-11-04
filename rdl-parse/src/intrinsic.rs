@@ -2459,3 +2459,46 @@ intrinsic_function!(
         )
     }
 );
+
+intrinsic_function!(
+    /// take is used to create an iterator which takes the first n values from the input
+    take
+    function (n, input) {
+        // TODO Should this function eagerly cull unneeded values from known collection types?
+        match n {
+            RuntimeValue::Integer(n) if *n < 0 => 
+                Err(RuntimeError::new(GeneralError::new(String::from("take: n must be a positive integer")))),
+            RuntimeValue::Integer(n) if *n == 0 => iter::internal0(),
+            RuntimeValue::Integer(n) => {
+                let it = iter::internal1(input)?;
+                let n = *n;
+                create_iterator!(
+                    "Take Iterator",
+                    _ => {
+                        let (val, new_it) =
+                            extract_iter_evaluation(
+                                it.evaluate_global_context_with_args(Vector::new().into())?);
+                        match new_it {
+                            RuntimeValue::None =>  Ok(vector![RuntimeValue::None, RuntimeValue::None].into()),
+                            new_it => Ok(vector![val, take::internal2(&(n-1).into(), &new_it)?].into()),
+                        }
+                    },
+                    idx => {
+                        if idx >= n {
+                            Ok(vector![RuntimeValue::None, RuntimeValue::None, n.into()].into())
+                        } else {
+                            let (val, new_it, taken) =
+                                extract_iter_evaluation_n(
+                                    it.evaluate_global_context_with_args(vector![idx.into()].into())?, idx)?;
+                            match new_it {
+                                RuntimeValue::None =>  Ok(vector![RuntimeValue::None, RuntimeValue::None, taken.into()].into()),
+                                new_it => Ok(vector![val, take::internal2(&(n-idx-1).into(), &new_it)?, taken.into()].into()),
+                            }
+                        }
+                    }
+                )
+            }
+            _ => Err(RuntimeError::new(GeneralError::new(String::from("take: n must be a positive integer"))))
+        }
+    }
+);
