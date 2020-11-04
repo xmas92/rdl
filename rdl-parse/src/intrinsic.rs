@@ -259,6 +259,22 @@ macro_rules! intrinsic_function {
     };
 }
 
+macro_rules! extract_variadic_argument {
+    ($more:ident => $v:ident, $vector_block:expr, $none_block:expr) => {
+        match $more {
+            RuntimeValue::Vector($v) => $vector_block,
+            RuntimeValue::None => $none_block,
+            _ => unreachable!(),
+        }
+    };
+    ($more:ident => $v:ident, $vector_block:expr) => {
+        match $more {
+            RuntimeValue::Vector($v) => $vector_block,
+            _ => unreachable!(),
+        }
+    };
+}
+
 intrinsic_function!(
     /// Plus is used to perform checked addition
     plus
@@ -304,13 +320,10 @@ intrinsic_function!(
     /// Returns addition of all the arguments\
     /// Requires that all types are of the same number type and addition is checked
     variadic (x, y, more) {
-        match more {
-            RuntimeValue::Vector(v) => {
-                v.iter().try_fold(plus::internal2(x,y)?, |x, y| plus::internal2(&x,y))
-            }
-            RuntimeValue::None => { plus::internal2(x, y) }
-            _ => unreachable!()
-        }
+        extract_variadic_argument!(
+            more => v,
+            v.iter().try_fold(plus::internal2(x,y)?, |x, y| plus::internal2(&x,y))
+        )
     }
 );
 
@@ -350,13 +363,10 @@ intrinsic_function!(
         }
     }
     variadic (x, y, more) {
-        match more {
-            RuntimeValue::Vector(v) => {
-                v.iter().try_fold(minus::internal2(x,y)?, |x, y| minus::internal2(&x,y))
-            }
-            RuntimeValue::None => { minus::internal2(x, y) }
-            _ => unreachable!()
-        }
+        extract_variadic_argument!(
+            more => v,
+            v.iter().try_fold(minus::internal2(x,y)?, |x, y| minus::internal2(&x,y))
+        )
     }
 );
 
@@ -396,13 +406,10 @@ intrinsic_function!(
         }
     }
     variadic (x, y, more) {
-        match more {
-            RuntimeValue::Vector(v) => {
-                v.iter().try_fold(star::internal2(x,y)?, |x, y| star::internal2(&x, y))
-            }
-            RuntimeValue::None => { star::internal2(x, y) }
-            _ => unreachable!()
-        }
+        extract_variadic_argument!(
+            more => v,
+            v.iter().try_fold(star::internal2(x,y)?, |x, y| star::internal2(&x, y))
+        )
     }
 );
 #[cfg(test)]
@@ -1116,8 +1123,8 @@ intrinsic_function!(
                     Err(RuntimeError::new(GeneralError::new(String::from(format!("Index out of range {:?}", n)))))
                 } else {
                     match collection.evaluate_global_context_with_args(vector![n.into()])? {
-                        RuntimeValue::Vector(mut v) if v.len() == 2 => {
-                            match v.last().unwrap() {
+                        RuntimeValue::Vector(mut v) if v.len() == 3 => {
+                            match v.get(1).unwrap() {
                                 RuntimeValue::None => Err(RuntimeError::new(GeneralError::new(String::from(format!("Index out of range {:?}", n))))),
                                 _ => Ok(v.pop_front().unwrap())
                             }
@@ -1170,8 +1177,8 @@ intrinsic_function!(
                     Ok(default.clone())
                 } else {
                     match collection.evaluate_global_context_with_args(vector![n.into()])? {
-                        RuntimeValue::Vector(mut v) if v.len() == 2 => {
-                            match v.last().unwrap() {
+                        RuntimeValue::Vector(mut v) if v.len() == 3 => {
+                            match v.get(1).unwrap() {
                                 RuntimeValue::None => Ok(default.clone()),
                                 _ => Ok(v.pop_front().unwrap())
                             }
@@ -1306,8 +1313,8 @@ intrinsic_function!(
                     else_fn.evaluate_global_context_with_args(Vector::new())
                 } else {
                     match collection.evaluate_global_context_with_args(vector![n.into()])? {
-                        RuntimeValue::Vector(mut v) if v.len() == 2 => {
-                            match v.last().unwrap() {
+                        RuntimeValue::Vector(mut v) if v.len() == 3 => {
+                            match v.get(1).unwrap() {
                                 RuntimeValue::None => else_fn.evaluate_global_context_with_args(Vector::new()),
                                 _ => Ok(v.pop_front().unwrap())
                             }
@@ -1484,8 +1491,8 @@ intrinsic_function!(
                     Ok(collection.clone())
                 } else {
                     match collection.evaluate_global_context_with_args(vector![(n-1).into()])? {
-                        RuntimeValue::Vector(mut v) if v.len() == 2 => {
-                            match v.pop_back().unwrap() {
+                        RuntimeValue::Vector(mut v) if v.len() == 3 => {
+                            match v.remove(1) {
                                 RuntimeValue::None => iter::internal0(),
                                 v => Ok(v)
                             }
@@ -1555,7 +1562,7 @@ intrinsic_function!(
                     Ok(collection.clone())
                 } else {
                     match collection.evaluate_global_context_with_args(vector![(n-1).into()])? {
-                        RuntimeValue::Vector(mut v) if v.len() == 2 => Ok(v.pop_back().unwrap()),
+                        RuntimeValue::Vector(mut v) if v.len() == 3 => Ok(v.remove(1)),
                         _ => unreachable!(),
                     }
 
@@ -1636,7 +1643,7 @@ intrinsic_function!(
             RuntimeValue::Iterator(_) => {
                 let mut it = collection.clone();
                 let v: Result<Vec<_>,_> = std::iter::from_fn(move || {
-                    match it.evaluate_global_context_with_args(vector![]) {
+                    match it.evaluate_global_context_with_args(Vector::new()) {
                         Ok(RuntimeValue::Vector(mut v)) if v.len() == 2 => {
                             match v.pop_back().unwrap() {
                                 RuntimeValue::None => None,
@@ -1708,7 +1715,7 @@ intrinsic_function!(
             RuntimeValue::Iterator(_) => {
                 let mut it = collection.clone();
                 let v: Result<Vec<_>,_> = std::iter::from_fn(move || {
-                    match it.evaluate_global_context_with_args(vector![]) {
+                    match it.evaluate_global_context_with_args(Vector::new()) {
                         Ok(RuntimeValue::Vector(mut v)) if v.len() == 2 => {
                             match v.pop_back().unwrap() {
                                 RuntimeValue::None => None,
@@ -1808,24 +1815,22 @@ intrinsic_function!(
 intrinsic_function!(
     list
     variadic (more) {
-        match more {
-            RuntimeValue::None =>
-                Ok(RuntimeValue::List(Box::new(List::empty()))),
-            RuntimeValue::Vector(v) =>
-                Ok(RuntimeValue::List(Box::new(
-                    v.iter().rev().cloned().collect()
-                ))),
-            _ => unreachable!()
-        }
+        extract_variadic_argument!(
+            more => v,
+            Ok(RuntimeValue::List(Box::new(
+                v.iter().rev().cloned().collect()
+            ))),
+            Ok(RuntimeValue::List(Box::new(List::empty())))
+        )
     }
 );
 
 intrinsic_function!(
     concat
     variadic (more) {
-        match more {
-            RuntimeValue::None => Ok(RuntimeValue::List(Box::new(List::empty()))),
-            RuntimeValue::Vector(v) => {
+        extract_variadic_argument!(
+            more => v,
+            {
                 // TODO Add iterator? Should concat seq the iterator or alias chain?
                 let seqs: Result<Vec<_>,_> =
                 v.iter().map(|v| sequence::internal1(v))
@@ -1842,9 +1847,9 @@ intrinsic_function!(
                     Err(e) => Err(RuntimeError::new(GeneralError::new(String::from(format!("concat failed: ({:?})", e))))),
                 }
 
-            }
-            _ => unreachable!()
-        }
+            },
+            Ok(RuntimeValue::List(Box::new(List::empty())))
+        )
     }
 );
 
@@ -2078,11 +2083,11 @@ intrinsic_function!(
 intrinsic_function!(
     println
     variadic (more) {
-        match more {
-            RuntimeValue::Vector(v) =>
-                println!("{:?}", v.iter().map(|v| format!("{:?}",v)).collect::<Vec<String>>().join(" ")),
-            _ => println!()
-        };
+        extract_variadic_argument!(
+            more => v,
+            println!("{:?}", v.iter().map(|v| format!("{:?}",v)).collect::<Vec<String>>().join(" ")),
+            println!()
+        );
         Ok(RuntimeValue::None)
     }
 );
@@ -2102,8 +2107,15 @@ intrinsic_function!(
     iter
     function () {
         Ok(RuntimeValue::Iterator(Arc::new(
-            move |_,_| {
-                Ok(RuntimeValue::Vector(Box::new(vector![RuntimeValue::None,RuntimeValue::None])))
+            move |_,args| {
+                match args.len() {
+                    0 => Ok(vector![RuntimeValue::None,RuntimeValue::None].into()),
+                    1 => Ok(vector![RuntimeValue::None,RuntimeValue::None, 0.into()].into()),
+                    n => Err(RuntimeError::new(ArityError::new(
+                        n,
+                        String::from("Iter"),
+                    ))),
+                }
             }
         )))
     }
@@ -2130,9 +2142,9 @@ intrinsic_function!(
                                             ))))
                                         } else if (n as usize) < v.len() {
                                             let n = n as usize;
-                                            Ok(vector![v[n].clone(), iter::internal1(&v.skip(n + 1).into())?].into())
+                                            Ok(vector![v[n].clone(), iter::internal1(&v.skip(n + 1).into())?,((n as i64)+1).into()].into())
                                         } else {
-                                            Ok(vector![RuntimeValue::None, RuntimeValue::None].into())
+                                            Ok(vector![RuntimeValue::None, RuntimeValue::None,(v.len() as i64).into()].into())
                                         }
                                     }
                                     _ => Err(RuntimeError::new(GeneralError::new(String::from(
@@ -2176,9 +2188,9 @@ intrinsic_function!(
                                                 k = k_; v= v_;
                                             }
                                             Ok(vector![vector![k.clone(), v.clone()].into(),
-                                                        iter::internal1(&m.without(k).into())?].into())
+                                                        iter::internal1(&m.without(k).into())?, (n+1).into()].into())
                                         } else {
-                                            Ok(vector![RuntimeValue::None, RuntimeValue::None].into())
+                                            Ok(vector![RuntimeValue::None, RuntimeValue::None,(m.len() as i64).into()].into())
                                         }
                                     }
                                     _ => Err(RuntimeError::new(GeneralError::new(String::from(
@@ -2219,9 +2231,9 @@ intrinsic_function!(
                                                 s = s.without(v);
                                                 v = s.iter().next().unwrap();
                                             }
-                                            Ok(vector![v.clone(), iter::internal1(&s.without(v).into())?].into())
+                                            Ok(vector![v.clone(), iter::internal1(&s.without(v).into())?, (n+1).into()].into())
                                         } else {
-                                            Ok(vector![RuntimeValue::None, RuntimeValue::None].into())
+                                            Ok(vector![RuntimeValue::None, RuntimeValue::None,(s.len() as i64).into()].into())
                                         }
                                     }
                                     _ => Err(RuntimeError::new(GeneralError::new(String::from(
@@ -2258,9 +2270,9 @@ intrinsic_function!(
                                         } else if (n as usize) < l.len() {
                                             let l = l.skip(n as usize);
                                             let v = l.first().unwrap();
-                                            Ok(vector![v.clone(),iter::internal1(&l.rest().into())?].into())
+                                            Ok(vector![v.clone(),iter::internal1(&l.rest().into())?, (n+1).into()].into())
                                         } else {
-                                            Ok(vector![RuntimeValue::None, RuntimeValue::None].into())
+                                            Ok(vector![RuntimeValue::None, RuntimeValue::None, (l.len() as i64).into()].into())
                                         }
                                     }
                                     _ => Err(RuntimeError::new(GeneralError::new(String::from(
@@ -2284,8 +2296,8 @@ intrinsic_function!(
                         move |_,args| {
                             match args.len() {
                                 0 => {
-                                    let mut s = s.as_ref().clone();
-                                    Ok(vector![s.pop().unwrap().into(), iter::internal1(&s.into())?].into())
+                                    let mut it = s.chars();
+                                    Ok(vector![it.next().unwrap().into(), iter::internal1(&it.collect::<String>().into())?].into())
                                 },
                                 1 => match &args[0] {
                                     RuntimeValue::Integer(n) => {
@@ -2295,10 +2307,10 @@ intrinsic_function!(
                                                 "Index into iterator cannot be negative",
                                             ))))
                                         } else if (n as usize) < s.len() {
-                                            let mut s = s.chars().skip(n as usize).collect::<String>();
-                                            Ok(vector![s.pop().unwrap().into(), iter::internal1(&s.into())?].into())
+                                            let mut it = s.chars().skip(n as usize);
+                                            Ok(vector![it.next().unwrap().into(), iter::internal1(&it.collect::<String>().into())?, (n+1).into()].into())
                                         } else {
-                                            Ok(vector![RuntimeValue::None, RuntimeValue::None].into())
+                                            Ok(vector![RuntimeValue::None, RuntimeValue::None, (s.len() as i64).into()].into())
                                         }
                                     }
                                     _ => Err(RuntimeError::new(GeneralError::new(String::from(
@@ -2315,7 +2327,7 @@ intrinsic_function!(
                 }
             }
             c @ RuntimeValue::Function(_) => {
-                iter::internal2(&c.evaluate_global_context_with_args(vector![].into())?, &c)
+                iter::internal2(&c.evaluate_global_context_with_args(Vector::new().into())?, &c)
             }
             c @ RuntimeValue::Iterator(_) => Ok(c),
             c => Ok(RuntimeValue::Iterator(Arc::new(
@@ -2361,17 +2373,18 @@ intrinsic_function!(
                             0 => {
                                 if let RuntimeValue::Vector(mut v) = f.evaluate_global_context_with_args(vector![initial.clone()])? {
                                     if v.len() == 2 {
-                                        Ok(vector![v.pop_front().unwrap(), iter::internal2(&v.pop_front().unwrap(), &f)?].into())
-                                    } else if v.len() == 1 {
-                                        Ok(vector![v.pop_front().unwrap(), iter::internal0()?].into())
+                                        match v.pop_back().unwrap() {
+                                            RuntimeValue::None => Ok(vector![RuntimeValue::None,RuntimeValue::None].into()),
+                                            state => Ok(vector![v.pop_front().unwrap(), iter::internal2(&state, &f)?].into())
+                                        }
                                     } else {
                                         Err(RuntimeError::new(GeneralError::new(String::from(
-                                            "Iter function must contain signature: state -> [next, state?])",
+                                            "Iter function must contain signature: state -> [next, state])",
                                         ))))
                                     }
                                 } else {
                                     Err(RuntimeError::new(GeneralError::new(String::from(
-                                        "Iter function must contain signature: state -> [next, state?])",
+                                        "Iter function must contain signature: state -> [next, state])",
                                     ))))
                                 }
                             },
@@ -2383,18 +2396,20 @@ intrinsic_function!(
                                             "Index into iterator cannot be negative",
                                         ))))
                                     } else if let RuntimeValue::Vector(mut v) = f.evaluate_global_context_with_args(vector![initial.clone(), n.into()])? {
-                                        if v.len() == 2 {
-                                            Ok(vector![v.pop_front().unwrap(), iter::internal2(&v.pop_front().unwrap(), &f)?].into())
-                                        } else if v.len() == 1 {
-                                            Ok(vector![v.pop_front().unwrap(), iter::internal0()?].into())
+                                        if v.len() == 3 {
+                                            let taken = v.pop_back().unwrap();
+                                            match v.pop_back().unwrap() {
+                                                RuntimeValue::None => Ok(vector![RuntimeValue::None,RuntimeValue::None,taken].into()),
+                                                state => Ok(vector![v.pop_front().unwrap(), iter::internal2(&state, &f)?,taken].into())
+                                            }
                                         } else {
                                             Err(RuntimeError::new(GeneralError::new(String::from(
-                                                "Iter function must contain signature: state, count -> [next, state?])",
+                                                "Iter function must contain signature: state, count -> [next, state, taken])",
                                             ))))
                                         }
                                     } else {
                                         Err(RuntimeError::new(GeneralError::new(String::from(
-                                            "Iter function must contain signature: state, count -> [next, state?])",
+                                            "Iter function must contain signature: state, count -> [next, state, taken])",
                                         ))))
                                     }
                                 }
@@ -2412,5 +2427,132 @@ intrinsic_function!(
             }
             other => Err(RuntimeError::new(GeneralError::new(format!("Iter requires type ({:?}) to be a function", other))))
         }
+    }
+);
+
+#[inline(always)]
+fn extract_iter_evaluation(val: RuntimeValue) -> (RuntimeValue, RuntimeValue) {
+    match val {
+        RuntimeValue::Vector(mut v) if v.len() == 2 => {
+            (v.pop_front().unwrap(), v.pop_front().unwrap())
+        }
+        _ => unreachable!(),
+    }
+}
+
+#[inline(always)]
+fn extract_iter_evaluation_n(
+    val: RuntimeValue,
+    n: i64,
+) -> Result<(RuntimeValue, RuntimeValue, i64), RuntimeError> {
+    match val {
+        RuntimeValue::Vector(mut v) if v.len() == 3 => {
+            let taken = match v.pop_back().unwrap() {
+                RuntimeValue::Integer(taken) if taken >= 0 && taken <= n + 1 => taken,
+                RuntimeValue::Integer(_) => {
+                    return Err(RuntimeError::new(GeneralError::new(String::from(
+                        "Iterator values taken must be in [0,n+1]",
+                    ))))
+                }
+                _ => {
+                    return Err(RuntimeError::new(GeneralError::new(String::from(
+                        "Iterator values taken must be an integer",
+                    ))))
+                }
+            };
+            Ok((v.pop_front().unwrap(), v.pop_front().unwrap(), taken))
+        }
+        _ => unreachable!(),
+    }
+}
+
+intrinsic_function!(
+    /// chain is used to create a chain of iterators
+    chain
+    /// Alias iter::internal0()
+    function () {
+        iter::internal0()
+    }
+    /// **Variadic**
+    ///
+    /// Creates an iterator which chains iterators of all the arguments together
+    variadic (more) {
+        extract_variadic_argument!(
+            more => its,
+            {
+                let its: Result<Vector<_>,_> = its.iter().map(|arg| iter::internal1(arg)).collect();
+                let its = its?;
+                Ok(RuntimeValue::Iterator(Arc::new(
+                    move |_, args| {
+                        match args.len() {
+                            0 => {
+                                let mut it = its.iter();
+                                let f = it.next().unwrap();
+                                let (val, new_it) =
+                                    extract_iter_evaluation(
+                                        f.evaluate_global_context_with_args(Vector::new().into())?);
+                                match new_it {
+                                    RuntimeValue::None if its.len() == 1 =>
+                                        Ok(vector![RuntimeValue::None,RuntimeValue::None].into()),
+                                    RuntimeValue::None =>
+                                        chain::internal1(&it.cloned().collect::<Vector<_>>().into())?
+                                            .evaluate_global_context_with_args(Vector::new().into()),
+                                    new_it => {
+                                        let mut its = it.cloned().collect::<Vector<_>>();
+                                        its.push_front(new_it);
+                                        Ok(vector![val, chain::internal1(&its.into())?].into())
+                                    }
+                                }
+                            },
+                            1 => match &args[0] {
+                                RuntimeValue::Integer(n) => {
+                                    let n = *n;
+                                    if n < 0 {
+                                        Err(RuntimeError::new(GeneralError::new(String::from(
+                                            "Index into iterator cannot be negative",
+                                        ))))
+                                    } else {
+                                        let mut it = its.iter();
+                                        let f = it.next().unwrap();
+                                        let (val, new_it, taken) =
+                                            extract_iter_evaluation_n(
+                                                f.evaluate_global_context_with_args(vector![n.into()].into())?, n)?;
+                                        match new_it {
+                                            RuntimeValue::None if its.len() == 1 =>
+                                                Ok(vector![RuntimeValue::None,RuntimeValue::None, taken.into()].into()),
+                                            RuntimeValue::None => {
+                                                assert!(taken <= n, "Some iterator returned [_, nil, n+1] on evaluation with n");
+                                                // n-taken is the new index into the iterator after already taking taken values
+                                                // for index reaching index n from the start.
+                                                let n = n-taken;
+                                                let (val, new_it, recursion_taken) =
+                                                    extract_iter_evaluation_n(
+                                                        chain::internal1(&it.cloned().collect::<Vector<_>>().into())?
+                                                            .evaluate_global_context_with_args(vector![n.into()].into())?
+                                                        , n)?;
+                                                assert!(recursion_taken <= n + 1);
+                                                Ok(vector![val, new_it, (taken + recursion_taken).into()].into())
+                                            }
+                                            new_it => {
+                                                let mut its = it.cloned().collect::<Vector<_>>();
+                                                its.push_front(new_it);
+                                                Ok(vector![val, chain::internal1(&its.into())?, (n+1).into()].into())
+                                            }
+                                        }
+                                    }
+                                }
+                                _ => Err(RuntimeError::new(GeneralError::new(String::from(
+                                    "Index into iterator must be an integer.",
+                                )))),
+                            },
+                            n => Err(RuntimeError::new(ArityError::new(
+                                n,
+                                String::from("Chain Iter"),
+                            ))),
+                        }
+                    }
+                )))
+            }
+        )
     }
 );

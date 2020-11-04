@@ -86,6 +86,7 @@ impl Context {
                 String::from("apply") => intrinsic::apply::function(),
                 String::from("into") => intrinsic::into::function(),
                 String::from("iter") => intrinsic::iter::function(),
+                String::from("chain") => intrinsic::chain::function(),
             },
         }
     }
