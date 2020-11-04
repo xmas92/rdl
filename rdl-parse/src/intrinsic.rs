@@ -2106,30 +2106,25 @@ intrinsic_function!(
 macro_rules! create_iterator {
     ($name:expr, _ => $evaluation:expr, $n:ident => $evaluation_n:expr) => {
         Ok(RuntimeValue::Iterator(Arc::new(
-            move |_,args| {
-                match args.len() {
-                    0 => $evaluation,
-                    1 => match &args[0] {
-                        RuntimeValue::Integer(n) => {
-                            let $n = *n;
-                            if $n < 0 {
-                                Err(RuntimeError::new(GeneralError::new(String::from(
-                                    "Index into iterator cannot be negative",
-                                ))))
-                            } else {
-                                $evaluation_n
-                            }
+            move |_, args| match args.len() {
+                0 => $evaluation,
+                1 => match &args[0] {
+                    RuntimeValue::Integer(n) => {
+                        let $n = *n;
+                        if $n < 0 {
+                            Err(RuntimeError::new(GeneralError::new(String::from(
+                                "Index into iterator cannot be negative",
+                            ))))
+                        } else {
+                            $evaluation_n
                         }
-                        _ => Err(RuntimeError::new(GeneralError::new(String::from(
-                            "Index into iterator must be an integer.",
-                        )))),
-                    },
-                    n => Err(RuntimeError::new(ArityError::new(
-                        n,
-                        String::from($name),
-                    ))),
-                }
-            }
+                    }
+                    _ => Err(RuntimeError::new(GeneralError::new(String::from(
+                        "Index into iterator must be an integer.",
+                    )))),
+                },
+                n => Err(RuntimeError::new(ArityError::new(n, String::from($name)))),
+            },
         )))
     };
 }
@@ -2163,7 +2158,7 @@ intrinsic_function!(
                             let mut v = v.as_ref().clone();
                             Ok(vector![v.pop_front().unwrap(), iter::internal1(&v.into())?].into())
                         },
-                        n => 
+                        n =>
                         if (n as usize) < v.len() {
                             let n = n as usize;
                             Ok(vector![v[n].clone(), iter::internal1(&v.skip(n + 1).into())?,((n as i64)+1).into()].into())
@@ -2184,7 +2179,7 @@ intrinsic_function!(
                             Ok(vector![vector![k.clone(), v.clone()].into(),
                                         iter::internal1(&m.without(k).into())?].into())
                         },
-                        n => 
+                        n =>
                         if (n as usize) < m.len() {
                             let (mut k, mut v) = m.iter().next().unwrap();
                             let mut m = m.as_ref().clone();
@@ -2211,7 +2206,7 @@ intrinsic_function!(
                             let v = s.iter().next().unwrap();
                             Ok(vector![v.clone(),iter::internal1(&s.without(v).into())?].into())
                         },
-                        n => 
+                        n =>
                         if (n as usize) < s.len() {
                             let mut v = s.iter().next().unwrap();
                             let mut s = s.as_ref().clone();
@@ -2236,7 +2231,7 @@ intrinsic_function!(
                             let v = l.first().unwrap();
                             Ok(vector![v.clone(),iter::internal1(&l.rest().into())?].into())
                         },
-                        n => 
+                        n =>
                         if (n as usize) < l.len() {
                             let l = l.skip(n as usize);
                             let v = l.first().unwrap();
@@ -2257,7 +2252,7 @@ intrinsic_function!(
                             let mut it = s.chars();
                             Ok(vector![it.next().unwrap().into(), iter::internal1(&it.collect::<String>().into())?].into())
                         },
-                        n => 
+                        n =>
                         if (n as usize) < s.len() {
                             let mut it = s.chars().skip(n as usize);
                             Ok(vector![it.next().unwrap().into(), iter::internal1(&it.collect::<String>().into())?, (n+1).into()].into())
@@ -2276,7 +2271,7 @@ intrinsic_function!(
                 _ => {
                     Ok(vector![c.clone(), iter::internal0()?].into())
                 },
-                n => 
+                n =>
                 if n == 0 {
                     Ok(vector![c.clone(), iter::internal0()?].into())
                 } else {
@@ -2310,7 +2305,7 @@ intrinsic_function!(
                             ))))
                         }
                     },
-                    n => 
+                    n =>
                     if let RuntimeValue::Vector(mut v) = f.evaluate_global_context_with_args(vector![initial.clone(), n.into()])? {
                         if v.len() == 3 {
                             let taken = v.pop_back().unwrap();
@@ -2466,7 +2461,7 @@ intrinsic_function!(
     function (n, input) {
         // TODO Should this function eagerly cull unneeded values from known collection types?
         match n {
-            RuntimeValue::Integer(n) if *n < 0 => 
+            RuntimeValue::Integer(n) if *n < 0 =>
                 Err(RuntimeError::new(GeneralError::new(String::from("take: n must be a positive integer")))),
             RuntimeValue::Integer(n) if *n == 0 => iter::internal0(),
             RuntimeValue::Integer(n) => {
