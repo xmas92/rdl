@@ -1,4 +1,4 @@
-use std::{sync::Arc,cmp};
+use std::{cmp, sync::Arc};
 
 use im::{HashMap, HashSet, Vector};
 
@@ -2104,85 +2104,18 @@ intrinsic_function!(
 );
 
 macro_rules! create_iterator {
-    ($name:expr, _ => $evaluation:expr, $n:ident => $evaluation_n:expr) => {
-        Ok(RuntimeValue::Iterator(Arc::new(
-            move |_, args| match args.len() {
-                0 => $evaluation,
-                1 => match &args[0] {
-                    RuntimeValue::Integer(n) => {
-                        let $n = *n;
-                        if $n < 0 {
-                            Err(RuntimeError::new(GeneralError::new(String::from(
-                                "Index into iterator cannot be negative",
-                            ))))
-                        } else {
-                            $evaluation_n
-                        }
-                    }
-                    RuntimeValue::None => Ok(RuntimeValue::None),
-                    _ => Err(RuntimeError::new(GeneralError::new(String::from(
-                        "Index into iterator must be an integer.",
-                    )))),
-                },
-                n => Err(RuntimeError::new(ArityError::new(n, String::from($name)))),
-            },
-        )))
+    ($name:expr, $(let $var:ident = $val:expr;)* _ => $evaluation:expr, $n:ident => $evaluation_n:expr) => {
+        create_iterator!(
+            $name,
+            $(let $var = $val;)*
+            count => RuntimeValue::None,
+            _ => $evaluation,
+            $n => $evaluation_n)
     };
-    ($name:expr, count => $count:expr, _ => $evaluation:expr, $n:ident => $evaluation_n:expr) => {
-        Ok(RuntimeValue::Iterator(Arc::new(
-            move |_, args| match args.len() {
-                0 => $evaluation,
-                1 => match &args[0] {
-                    RuntimeValue::Integer(n) => {
-                        let $n = *n;
-                        if $n < 0 {
-                            Err(RuntimeError::new(GeneralError::new(String::from(
-                                "Index into iterator cannot be negative",
-                            ))))
-                        } else {
-                            $evaluation_n
-                        }
-                    }
-                    RuntimeValue::None => Ok($count),
-                    _ => Err(RuntimeError::new(GeneralError::new(String::from(
-                        "Index into iterator must be an integer.",
-                    )))),
-                },
-                n => Err(RuntimeError::new(ArityError::new(n, String::from($name)))),
-            },
-        )))
-    };
-    ($name:expr, $(let $var:ident = $val:expr;)+ _ => $evaluation:expr, $n:ident => $evaluation_n:expr) => {
+    ($name:expr, $(let $var:ident = $val:expr;)* count => $count:expr, _ => $evaluation:expr, $n:ident => $evaluation_n:expr) => {
         Ok(RuntimeValue::Iterator(Arc::new(
             move |_, args| {
-                $(let $var = $val;)+
-                match args.len() {
-                0 => $evaluation,
-                1 => match &args[0] {
-                    RuntimeValue::Integer(n) => {
-                        let $n = *n;
-                        if $n < 0 {
-                            Err(RuntimeError::new(GeneralError::new(String::from(
-                                "Index into iterator cannot be negative",
-                            ))))
-                        } else {
-                            $evaluation_n
-                        }
-                    }
-                    RuntimeValue::None => Ok(RuntimeValue::None),
-                    _ => Err(RuntimeError::new(GeneralError::new(String::from(
-                        "Index into iterator must be an integer.",
-                    )))),
-                },
-                n => Err(RuntimeError::new(ArityError::new(n, String::from($name)))),
-                }
-            }
-        )))
-    };
-    ($name:expr, $(let $var:ident = $val:expr;)+ count => $count:expr, _ => $evaluation:expr, $n:ident => $evaluation_n:expr) => {
-        Ok(RuntimeValue::Iterator(Arc::new(
-            move |_, args| {
-                $(let $var = $val;)+
+                $(let $var = $val;)*
                 match args.len() {
                 0 => $evaluation,
                 1 => match &args[0] {
