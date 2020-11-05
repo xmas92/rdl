@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{sync::Arc,cmp};
 
 use im::{HashMap, HashSet, Vector};
 
@@ -2119,6 +2119,31 @@ macro_rules! create_iterator {
                             $evaluation_n
                         }
                     }
+                    RuntimeValue::None => Ok(RuntimeValue::None),
+                    _ => Err(RuntimeError::new(GeneralError::new(String::from(
+                        "Index into iterator must be an integer.",
+                    )))),
+                },
+                n => Err(RuntimeError::new(ArityError::new(n, String::from($name)))),
+            },
+        )))
+    };
+    ($name:expr, count => $count:expr, _ => $evaluation:expr, $n:ident => $evaluation_n:expr) => {
+        Ok(RuntimeValue::Iterator(Arc::new(
+            move |_, args| match args.len() {
+                0 => $evaluation,
+                1 => match &args[0] {
+                    RuntimeValue::Integer(n) => {
+                        let $n = *n;
+                        if $n < 0 {
+                            Err(RuntimeError::new(GeneralError::new(String::from(
+                                "Index into iterator cannot be negative",
+                            ))))
+                        } else {
+                            $evaluation_n
+                        }
+                    }
+                    RuntimeValue::None => Ok($count),
                     _ => Err(RuntimeError::new(GeneralError::new(String::from(
                         "Index into iterator must be an integer.",
                     )))),
@@ -2144,6 +2169,34 @@ macro_rules! create_iterator {
                             $evaluation_n
                         }
                     }
+                    RuntimeValue::None => Ok(RuntimeValue::None),
+                    _ => Err(RuntimeError::new(GeneralError::new(String::from(
+                        "Index into iterator must be an integer.",
+                    )))),
+                },
+                n => Err(RuntimeError::new(ArityError::new(n, String::from($name)))),
+                }
+            }
+        )))
+    };
+    ($name:expr, $(let $var:ident = $val:expr;)+ count => $count:expr, _ => $evaluation:expr, $n:ident => $evaluation_n:expr) => {
+        Ok(RuntimeValue::Iterator(Arc::new(
+            move |_, args| {
+                $(let $var = $val;)+
+                match args.len() {
+                0 => $evaluation,
+                1 => match &args[0] {
+                    RuntimeValue::Integer(n) => {
+                        let $n = *n;
+                        if $n < 0 {
+                            Err(RuntimeError::new(GeneralError::new(String::from(
+                                "Index into iterator cannot be negative",
+                            ))))
+                        } else {
+                            $evaluation_n
+                        }
+                    }
+                    RuntimeValue::None => Ok($count),
                     _ => Err(RuntimeError::new(GeneralError::new(String::from(
                         "Index into iterator must be an integer.",
                     )))),
@@ -2158,18 +2211,12 @@ macro_rules! create_iterator {
 intrinsic_function!(
     iter
     function () {
-        Ok(RuntimeValue::Iterator(Arc::new(
-            move |_,args| {
-                match args.len() {
-                    0 => Ok(vector![RuntimeValue::None,RuntimeValue::None].into()),
-                    1 => Ok(vector![RuntimeValue::None,RuntimeValue::None, 0.into()].into()),
-                    n => Err(RuntimeError::new(ArityError::new(
-                        n,
-                        String::from("Empty Iterator"),
-                    ))),
-                }
-            }
-        )))
+        create_iterator!(
+            "Empty Iterator",
+            count => 0.into(),
+            _ => Ok(vector![RuntimeValue::None,RuntimeValue::None].into()),
+            n => Ok(vector![RuntimeValue::None,RuntimeValue::None, 0.into()].into())
+        )
     }
     function (c) {
         let c = c.clone();
@@ -2180,6 +2227,7 @@ intrinsic_function!(
                 } else {
                     create_iterator!(
                         "Vector Iterator",
+                        count => (v.len() as i64).into(),
                         _ => {
                             let mut v = v.as_ref().clone();
                             Ok(vector![v.pop_front().unwrap(), iter::internal1(&v.into())?].into())
@@ -2200,6 +2248,7 @@ intrinsic_function!(
                 } else {
                     create_iterator!(
                         "Map Iterator",
+                        count => (m.len() as i64).into(),
                         _ => {
                             let (k, v) = m.iter().next().unwrap();
                             Ok(vector![vector![k.clone(), v.clone()].into(),
@@ -2228,6 +2277,7 @@ intrinsic_function!(
                 } else {
                     create_iterator!(
                         "Set Iterator",
+                        count => (s.len() as i64).into(),
                         _ => {
                             let v = s.iter().next().unwrap();
                             Ok(vector![v.clone(),iter::internal1(&s.without(v).into())?].into())
@@ -2253,6 +2303,7 @@ intrinsic_function!(
                 } else {
                     create_iterator!(
                         "List Iterator",
+                        count => (l.len() as i64).into(),
                         _ => {
                             let v = l.first().unwrap();
                             Ok(vector![v.clone(),iter::internal1(&l.rest().into())?].into())
@@ -2294,6 +2345,7 @@ intrinsic_function!(
             c @ RuntimeValue::Iterator(_) => Ok(c),
             c => create_iterator!(
                 "Value Iterator",
+                count => 1.into(),
                 _ => {
                     Ok(vector![c.clone(), iter::internal0()?].into())
                 },
@@ -2356,6 +2408,21 @@ intrinsic_function!(
     }
 );
 
+/// Only call if you know it is an Iterator
+#[inline(always)]
+fn iterator_count(val: &RuntimeValue) -> Option<i64> {
+    match val {
+        RuntimeValue::Iterator(_) => {
+            match val.evaluate_global_context_with_args(vector![RuntimeValue::None].into()) {
+                Ok(RuntimeValue::Integer(n)) => Some(n),
+                Ok(RuntimeValue::None) => None,
+                _ => unreachable!(),
+            }
+        }
+        _ => unreachable!(),
+    }
+}
+
 #[inline(always)]
 fn extract_iter_evaluation(val: RuntimeValue) -> (RuntimeValue, RuntimeValue) {
     match val {
@@ -2410,6 +2477,14 @@ intrinsic_function!(
                 let its = its?;
                 create_iterator!(
                     "Chain Iterator",
+                    count => its.iter().map(iterator_count).try_fold(0, |acc, x|
+                        match (acc, x) {
+                            (_, None) => None,
+                            (acc,Some(_)) if acc < 0 => Some(acc),
+                            (_,Some(x)) if x < 0 => Some(x),
+                            (acc,Some(x)) => acc.checked_add(x),
+                        }
+                    ).map_or(RuntimeValue::None,|v| v.into()),
                     _ => {
                         let mut it = its.iter();
                         let f = it.next().unwrap();
@@ -2471,6 +2546,7 @@ intrinsic_function!(
         let value = value.clone();
         create_iterator!(
             "Repeat Iterator",
+            count => (-1).into(),
             _ => {
                 Ok(vector![value.clone(), repeat::internal1(&value)?].into())
             },
@@ -2495,6 +2571,8 @@ intrinsic_function!(
                 let n = *n;
                 create_iterator!(
                     "Take Iterator",
+                    count => iterator_count(&it).map_or(RuntimeValue::None,|v|
+                        if v < 0 { n.into() } else { cmp::min(n,v).into() }),
                     _ => {
                         let (val, new_it) =
                             extract_iter_evaluation(
@@ -2547,6 +2625,17 @@ intrinsic_function!(
                     create_iterator!(
                         "Interleave Iterator",
                         let it = chain::internal1(&vector![values.clone(), interleave::internal1(&its)?].into())?;
+                        count => match &its {
+                            RuntimeValue::Vector(its) => its.iter().map(iterator_count).try_fold(-1, |acc, x|
+                                match (acc, x) {
+                                    (_, None) => None,
+                                    (acc,Some(x)) if acc < 0 => Some(x),
+                                    (acc,Some(x)) if x < 0 => Some(acc),
+                                    (acc,Some(x)) => Some(cmp::min(acc, x)),
+                                }
+                            ).map_or(RuntimeValue::None,|v| if v < 0 {v} else {(v + 1) * its.len() as i64}.into()),
+                            _ => unreachable!(),
+                        },
                         _ => {
                             it.evaluate_global_context_with_args(Vector::new().into())
                         },
