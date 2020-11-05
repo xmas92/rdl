@@ -2127,6 +2127,32 @@ macro_rules! create_iterator {
             },
         )))
     };
+    ($name:expr, $(let $var:ident = $val:expr;)+ _ => $evaluation:expr, $n:ident => $evaluation_n:expr) => {
+        Ok(RuntimeValue::Iterator(Arc::new(
+            move |_, args| {
+                $(let $var = $val;)+
+                match args.len() {
+                0 => $evaluation,
+                1 => match &args[0] {
+                    RuntimeValue::Integer(n) => {
+                        let $n = *n;
+                        if $n < 0 {
+                            Err(RuntimeError::new(GeneralError::new(String::from(
+                                "Index into iterator cannot be negative",
+                            ))))
+                        } else {
+                            $evaluation_n
+                        }
+                    }
+                    _ => Err(RuntimeError::new(GeneralError::new(String::from(
+                        "Index into iterator must be an integer.",
+                    )))),
+                },
+                n => Err(RuntimeError::new(ArityError::new(n, String::from($name)))),
+                }
+            }
+        )))
+    };
 }
 
 intrinsic_function!(
@@ -2495,5 +2521,41 @@ intrinsic_function!(
             }
             _ => Err(RuntimeError::new(GeneralError::new(String::from("take: n must be a positive integer"))))
         }
+    }
+);
+
+intrinsic_function!(
+    /// interleave is used to create an iterator which interleaves the first values of the arguments, then the second etc.
+    interleave
+    variadic (more) {
+        extract_variadic_argument!(
+            more => its,
+            {
+                let its: Result<Vec<(_,_)>,_> =
+                    its.iter().map(|arg|
+                        Ok(extract_iter_evaluation(
+                            iter::internal1(arg)?
+                                .evaluate_global_context_with_args(
+                                    Vector::new().into())?))
+                    ).collect();
+                let (values, its): (Vector<_>, Vector<_>) = its?.into_iter().unzip();
+                if its.iter().any(|v| *v == RuntimeValue::None) {
+                    iter::internal0()
+                } else {
+                    // TODO not sure if we should do this outside, it adds one layer of indirection but reduces the clojure size.
+                    let (values, its): (RuntimeValue, RuntimeValue) = (values.into(), its.into());
+                    create_iterator!(
+                        "Interleave Iterator",
+                        let it = chain::internal1(&vector![values.clone(), interleave::internal1(&its)?].into())?;
+                        _ => {
+                            it.evaluate_global_context_with_args(Vector::new().into())
+                        },
+                        n => {
+                            it.evaluate_global_context_with_args(vector![n.into()].into())
+                        }
+                    )
+                }
+            }
+        )
     }
 );
