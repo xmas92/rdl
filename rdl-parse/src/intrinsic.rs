@@ -2581,3 +2581,59 @@ intrinsic_function!(
         )
     }
 );
+
+intrinsic_function!(
+    /// butlast is used to create an iterator which returns every value but the last\
+    /// **Warning:** uses look ahead (1) so side effect may be triggered early and will
+    /// trigger for the last value even if not returned by the iterator. Think about moving
+    /// the side effects to after the butlast iterator.
+    butlast
+    function (collection) {
+        let it = iter::internal1(collection)?.into_iter();
+        create_iterator!(
+            "ButLast Iterator",
+            count => match iterator_count(&it.0) {
+                Some(x) if x < 0 => x.into(),
+                Some(0) => 0.into(),
+                Some(x) => (x-1).into(),
+                None => RuntimeValue::None,
+            },
+            _ => {
+                let mut it = it.clone();
+                match it.next().transpose()? {
+                    None => Ok(vector![RuntimeValue::None,RuntimeValue::None].into()),
+                    Some(value) => if let Some(next_value) = it.next().transpose()? {
+                        Ok(vector![
+                            value,
+                            butlast::internal1(
+                                &chain::internal1(&vector![
+                                    vector![next_value.clone()].into(),
+                                    it.0.clone()].into())?)?].into())
+                    } else {
+                        Ok(vector![RuntimeValue::None,RuntimeValue::None].into())
+                    }
+                }
+            },
+            n => {
+                let mut it = it.clone();
+                match it.advance_by(n as usize) {
+                    Ok(()) => match it.next().transpose()? {
+                        None => Ok(vector![RuntimeValue::None,RuntimeValue::None, cmp::max(0,n-1).into()].into()),
+                        Some(value) => if let Some(next_value) = it.next().transpose()? {
+                            Ok(vector![
+                                value,
+                                butlast::internal1(
+                                    &chain::internal1(&vector![
+                                        vector![next_value.clone()].into(),
+                                        it.0.clone()].into())?)?,
+                                (n+1).into()].into())
+                        } else {
+                            Ok(vector![RuntimeValue::None,RuntimeValue::None, n.into()].into())
+                        }
+                    }
+                    Err(n) => Ok(vector![RuntimeValue::None,RuntimeValue::None, (n as i64 - 1).into()].into())
+                }
+            }
+        )
+    }
+);

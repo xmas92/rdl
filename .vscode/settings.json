@@ -3,6 +3,7 @@
         "Arity",
         "Hasher",
         "bigfloat",
+        "butlast",
         "concat",
         "decompile",
         "defmacro",
