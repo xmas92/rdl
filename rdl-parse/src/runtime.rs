@@ -538,6 +538,15 @@ impl From<List<RuntimeValue>> for RuntimeValue {
         RuntimeValue::List(Box::new(l))
     }
 }
+impl Into<bool> for RuntimeValue {
+    fn into(self) -> bool {
+        match self {
+            RuntimeValue::None | RuntimeValue::Boolean(false) => false,
+            RuntimeValue::Evaluation(_) => todo!(),
+            _ => true,
+        }
+    }
+}
 
 #[cfg(test)]
 mod tests {
