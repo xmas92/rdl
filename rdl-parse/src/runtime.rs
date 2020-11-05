@@ -160,7 +160,7 @@ pub enum RuntimeValue {
     Unquote(Box<List<RuntimeValue>>),
     Form(Box<Form>),
     Reference(Arc<dyn Any + Send + Sync>),
-    Iterator(Arc<dyn Fn(Context, Vector<RuntimeValue>) -> RuntimeResult + Send + Sync>),
+    Iterator(Arc<dyn Fn(Vector<RuntimeValue>) -> RuntimeResult + Send + Sync>),
     Function(Arc<dyn Fn(Context, Vector<RuntimeValue>) -> RuntimeResult + Send + Sync>),
     Evaluation(Arc<dyn Fn(Context) -> RuntimeResult + Send + Sync>),
     ContextLookup(Arc<dyn Fn(Context) -> RuntimeResult + Send + Sync>),
@@ -265,7 +265,7 @@ impl RuntimeValue {
                 n => Err(RuntimeError::new(ArityError::new(n, String::from("Map")))),
             },
             RuntimeValue::Function(f) => (f)(context, args),
-            RuntimeValue::Iterator(f) => (f)(context, args),
+            RuntimeValue::Iterator(f) => (f)(args),
             _ => Ok(self.clone()),
         }
     }
@@ -544,6 +544,117 @@ impl Into<bool> for RuntimeValue {
             RuntimeValue::None | RuntimeValue::Boolean(false) => false,
             RuntimeValue::Evaluation(_) => todo!(),
             _ => true,
+        }
+    }
+}
+
+#[derive(Clone, PartialEq, Eq, Debug, Hash)]
+pub struct RuntimeIter(pub RuntimeValue);
+impl Iterator for RuntimeIter {
+    type Item = RuntimeResult;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        match &self.0 {
+            RuntimeValue::Iterator(f) => {
+                let (value, next) = match (f)(Vector::new().into()) {
+                    e @ Err(_) => return Some(e),
+                    Ok(RuntimeValue::Vector(mut v)) if v.len() == 2 => {
+                        (v.pop_front().unwrap(), v.pop_front().unwrap())
+                    }
+                    _ => unreachable!(),
+                };
+                self.0 = next;
+                match &self.0 {
+                    RuntimeValue::None => None,
+                    _ => Some(Ok(value)),
+                }
+            }
+            _ => unreachable!(),
+        }
+    }
+
+    fn size_hint(&self) -> (usize, Option<usize>) {
+        assert!(std::mem::size_of::<usize>() >= std::mem::size_of::<i64>());
+        match self.0 {
+            RuntimeValue::Iterator(_) => {
+                match self
+                    .0
+                    .evaluate_global_context_with_args(vector![RuntimeValue::None].into())
+                {
+                    Ok(RuntimeValue::Integer(n)) if n < 0 => (usize::MAX, None),
+                    Ok(RuntimeValue::Integer(n)) => (n as usize, Some(n as usize)),
+                    Ok(RuntimeValue::None) => (0, None),
+                    _ => unreachable!(),
+                }
+            }
+            RuntimeValue::None => (0, Some(0)),
+            _ => unreachable!(),
+        }
+    }
+
+    #[allow(unused_must_use)]
+    fn advance_by(&mut self, n: usize) -> Result<(), usize> {
+        if n == 0 {
+            Ok(())
+        } else {
+            match self.0 {
+                RuntimeValue::Iterator(_) => {
+                    let n = (n - 1) as i64;
+                    let res = match self
+                        .0
+                        .evaluate_global_context_with_args(vector![n.into()].into())
+                    {
+                        Ok(RuntimeValue::Vector(mut v)) if v.len() == 3 => {
+                            match v.pop_back().unwrap() {
+                                RuntimeValue::Integer(taken) if taken >= 0 && taken <= n + 1 => {
+                                    Ok((v.pop_back().unwrap(), taken))
+                                }
+                                RuntimeValue::Integer(_) => {
+                                    Err(RuntimeError::new(GeneralError::new(String::from(
+                                        "Iterator values taken must be in [0,n+1]",
+                                    ))))
+                                }
+                                _ => Err(RuntimeError::new(GeneralError::new(String::from(
+                                    "Iterator values taken must be an integer",
+                                )))),
+                            }
+                        }
+                        _ => unreachable!(),
+                    };
+                    match res {
+                        Ok((RuntimeValue::None, taken)) => {
+                            self.0 = RuntimeValue::None;
+                            Err(taken as usize)
+                        }
+                        Ok((it, taken)) => {
+                            assert!(taken == n + 1);
+                            self.0 = it;
+                            Ok(())
+                        }
+                        Err(_) => {
+                            for i in 0..((n + 1) as usize) {
+                                self.next().ok_or(i)?;
+                            }
+                            Ok(())
+                        }
+                    }
+                }
+                RuntimeValue::None => Err(0),
+                _ => unreachable!(),
+            }
+        }
+    }
+}
+/// Should only be used it RuntimeValue is known to be an Iterator.
+impl IntoIterator for RuntimeValue {
+    type Item = RuntimeResult;
+
+    type IntoIter = RuntimeIter;
+
+    fn into_iter(self) -> Self::IntoIter {
+        match self {
+            RuntimeValue::Iterator(_) => RuntimeIter(self),
+            _ => unreachable!(),
         }
     }
 }

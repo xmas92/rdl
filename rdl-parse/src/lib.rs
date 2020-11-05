@@ -2,6 +2,7 @@
 #![feature(map_first_last)]
 #![feature(or_patterns)]
 #![feature(bindings_after_at)]
+#![feature(iter_advance_by)]
 
 pub mod grammar;
 

@@ -2114,7 +2114,7 @@ macro_rules! create_iterator {
     };
     ($name:expr, $(let $var:ident = $val:expr;)* count => $count:expr, _ => $evaluation:expr, $n:ident => $evaluation_n:expr) => {
         Ok(RuntimeValue::Iterator(Arc::new(
-            move |_, args| {
+            move |args| {
                 $(let $var = $val;)*
                 match args.len() {
                 0 => $evaluation,
