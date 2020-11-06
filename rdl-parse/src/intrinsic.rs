@@ -1766,6 +1766,51 @@ intrinsic_function!(
 );
 
 intrinsic_function!(
+    last
+    function (collection) {
+        match collection {
+            RuntimeValue::None => Ok(RuntimeValue::None),
+            RuntimeValue::List(l) => {
+                if l.len() == 0 {
+                    Ok(RuntimeValue::None)
+                } else {
+                    Ok(l.iter().nth(l.len()-1).unwrap().clone())
+                }
+            }
+            RuntimeValue::Vector(v) => {
+                if v.len() == 0 {
+                    Ok(RuntimeValue::None)
+                } else {
+                    Ok(v.back().unwrap().clone())
+                }
+            }
+            RuntimeValue::Iterator(_)  => {
+                Ok(collection.clone().into_iter().last().transpose()?.unwrap_or(RuntimeValue::None))
+            }
+            RuntimeValue::String(s)  => {
+                Ok(s.chars().last().map(|c| c.into()).unwrap_or(RuntimeValue::None))
+            }
+            RuntimeValue::Map(m) => {
+                if m.len() == 0 {
+                    Ok(RuntimeValue::None)
+                } else {
+                    let (k, v) = m.iter().nth(m.len()-1).unwrap();
+                    Ok(RuntimeValue::Vector(Box::new(vector![k.clone(), v.clone()])))
+                }
+            }
+            RuntimeValue::Set(s) => {
+                if s.len() == 0 {
+                    Ok(RuntimeValue::None)
+                } else {
+                    Ok(s.iter().nth(s.len()-1).unwrap().clone())
+                }
+            }
+            _ => {Err(RuntimeError::new(GeneralError::new(String::from(format!("last not supported for ({:?})", collection)))))}
+        }
+    }
+);
+
+intrinsic_function!(
     rest
     function (collection) {
         match collection {

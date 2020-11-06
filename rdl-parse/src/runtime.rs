@@ -76,6 +76,7 @@ impl Context {
                 String::from("seq") => intrinsic::seq::function(),
                 String::from("sequence") => intrinsic::sequence::function(),
                 String::from("first") => intrinsic::first::function(),
+                String::from("last") => intrinsic::last::function(),
                 String::from("rest") => intrinsic::rest::function(),
                 String::from("next") => intrinsic::next::function(),
                 String::from("=") => intrinsic::eq::function(),
