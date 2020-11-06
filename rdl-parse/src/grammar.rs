@@ -3,6 +3,7 @@ use num::BigInt;
 use peg::parser;
 use std::{
     char::from_u32,
+    cmp,
     collections::BTreeMap,
     sync::{Arc, Weak},
 };
@@ -869,19 +870,76 @@ impl Compile for SpecialForm {
             }
             SpecialForm::Fn(s, f) => {
                 let s = s.clone();
-                let f: BTreeMap<_, (Vec<_>, _, Vec<_>)> = f
+                let mut variadic: Option<(Vec<_>, _, Vec<_>)> = None;
+                let mut variadic_arity: Option<usize> = None;
+                let mut variadic_count: usize = 0;
+                let (mut arity, mut f): (Vec<usize>, BTreeMap<_, (Vec<_>, _, Vec<_>)>) = f
                     .into_iter()
-                    .map(|(bf, var, f)| {
-                        (
-                            bf.len() + if var.is_some() { 1 } else { 0 },
-                            (
-                                bf.into_iter().map(|bf| bf.compile()).collect(),
-                                var.clone().map(|bf| bf.compile()),
-                                f.into_iter().map(|f| f.compile()).collect(),
-                            ),
-                        )
+                    .inspect(|(bf, var, f)| {
+                        if let (count, Some(_)) = (bf.len(), var) {
+                            variadic_arity = variadic_arity
+                                .map_or(Some(count + 1), |c| Some(cmp::min(c, count + 1)));
+                            variadic_count += 1;
+                            if Some(count + 1) == variadic_arity {
+                                variadic = Some((
+                                    bf.iter().map(|bf| bf.compile()).collect(),
+                                    var.clone().map(|bf| bf.compile()),
+                                    f.iter().map(|f| f.compile()).collect(),
+                                ));
+                            };
+                        }
                     })
-                    .collect();
+                    .filter_map(|(bf, var, f)| match var {
+                        None => Some((
+                            bf.len(),
+                            (
+                                bf.len(),
+                                (
+                                    bf.iter().map(|bf| bf.compile()).collect(),
+                                    Option::<CompiledBindingForm>::None,
+                                    f.iter().map(|f| f.compile()).collect(),
+                                ),
+                            ),
+                        )),
+                        _ => None,
+                    })
+                    .unzip();
+                let report_arity = |(x, c)|
+                    // TODO Add Logging
+                    if variadic_arity.is_some() && variadic_arity.le(&x) {
+                        println!(
+                            "Warning multiple({}) definitions with arity {} overwritten by variadic function with arity {}",
+                            c,
+                            x.unwrap(),
+                            variadic_arity.unwrap())
+                    } else if c > 1 {
+                        println!(
+                            "Warning multiple({}) definitions with arity {}  found in function. Choice undefined",
+                            c,
+                            x.unwrap())
+                    };
+                if variadic_count > 1 {
+                    println!(
+                        "Warning multiple({}) variadic definitions found in function. One with smallest({}) arity chosen.",
+                        variadic_count,
+                        variadic_arity.unwrap());
+                }
+                arity.sort();
+                (report_arity)(arity.into_iter().fold((None, 0), |acc, x| match acc {
+                    (None, _) => (Some(x), 1),
+                    (Some(y), c) if x == y => (Some(y), c + 1),
+                    acc => {
+                        (report_arity)(acc);
+                        (Some(x), 1)
+                    }
+                }));
+                if let (Some(value), Some(arity)) = (variadic, variadic_arity) {
+                    f = f.into_iter().filter(|(k,_)| *k < arity).collect();
+                    if !f.contains_key(&(arity - 1)) {
+                        f.insert(arity - 1, value.clone());
+                    }
+                    f.insert(arity, value);
+                }
                 RuntimeValue::Function(Arc::new_cyclic(
                     |self_: &Weak<
                         Box<dyn Fn(Context, Vector<RuntimeValue>) -> RuntimeResult + Send + Sync>,
