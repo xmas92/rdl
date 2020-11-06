@@ -44,6 +44,7 @@ fn test_ast() -> io::Result<()> {
         .unwrap();
     compile("(defmacro -> [x & forms] (loop [x x forms forms] (if forms (let [form (first forms) threaded (if (seq? form) '((first form) x @(next form)) '(form x))] (recur threaded (next forms))) x)))").unwrap();
     compile("(defmacro ->> [x & forms] (loop [x x forms forms] (if forms (let [form (first forms) threaded (if (seq? form) '((first form) @(next form) x) '(form x))] (recur threaded (next forms))) x)))").unwrap();
+    compile("(defmacro as-> [expr name & forms] '((quote let) [name expr @(sequence (interleave (repeat name) (butlast forms)))] (if forms (last forms) name)))").unwrap();
     let prog = compile(&input.trim());
 
     match &prog {
