@@ -92,6 +92,8 @@ impl Context {
                 String::from("take") => intrinsic::take::function(),
                 String::from("interleave") => intrinsic::interleave::function(),
                 String::from("butlast") => intrinsic::butlast::function(),
+                String::from("chunk") => intrinsic::chunk::function(),
+                String::from("zip") => intrinsic::zip::function(),
             },
         }
     }

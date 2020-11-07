@@ -2682,3 +2682,79 @@ intrinsic_function!(
         )
     }
 );
+
+
+intrinsic_function!(
+    /// TODO
+    chunk
+    /// TODO
+    function (size, collection) {
+        let it = iter::internal1(collection)?;
+        let num = match &size {
+            RuntimeValue::Integer(n) if *n > 0 => Ok(*n),
+            _ => Err(RuntimeError::new(GeneralError::new(String::from("take: n must be a positive integer"))))
+        }?;
+        let it = it.into_iter();
+        let size = size.clone();
+        create_iterator!(
+            "Chunk Iterator",
+            count => match iterator_count(&it.0) {
+                Some(x) if x < 0 => x.into(),
+                Some(x) => (x / num + if x % num == 0 {0} else {1}).into(),
+                None => RuntimeValue::None,
+            },
+            _ => {
+                let ret: Result<Vector<_>,_> = it.clone().take(num as usize).collect();
+                let ret = ret?;
+                if ret.is_empty() {
+                    Ok(vector![RuntimeValue::None,RuntimeValue::None].into())
+                } else if ret.len() != num as usize {
+                    Ok(vector![ret.into(), iter::internal0()?].into())
+                } else {
+                    let mut it = it.clone();
+                    match it.advance_by(num as usize) { _ => {}}
+                    Ok(vector![ret.into(), chunk::internal2(&size,&it.0)?].into())
+                }
+            },
+            n => {
+                let mut it = it.clone();
+                match it.advance_by((n*num) as usize) {
+                    Ok(_) => {
+                        let ret: Result<Vector<_>,_> = it.clone().take(num as usize).collect();
+                        let ret = ret?;
+                        if ret.is_empty() {
+                            Ok(vector![RuntimeValue::None,RuntimeValue::None, n.into()].into())
+                        } else if ret.len() != num as usize {
+                            Ok(vector![ret.into(), iter::internal0()?, (n+1).into()].into())
+                        }else {
+                            Ok(vector![ret.into(), chunk::internal2(&size,&it.0)?, (n+1).into()].into())
+                        }
+                    },
+                    Err(taken)  => {
+                        let taken = taken as i64;
+                        Ok(vector![RuntimeValue::None,RuntimeValue::None, (taken / num + if taken % num == 0 {0} else {1}).into()].into())
+                    }
+                }
+            }
+            
+        )
+    }
+);
+
+intrinsic_function!(
+    /// TODO
+    zip
+    ///
+    function () {
+        iter::internal0()
+    }
+    /// TODO
+    variadic (more) {
+        let num = if let RuntimeValue::Vector(v) = more {
+            (v.len() as i64).into()
+        } else {
+            unreachable!()
+        };
+        chunk::internal2(&num,&interleave::internal1(more)?)
+    }
+);
