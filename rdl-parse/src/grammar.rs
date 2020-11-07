@@ -733,8 +733,8 @@ impl Compile for Value {
 
     fn macro_compile(&self) -> RuntimeValue {
         match self {
-            Value::List(l) => {
-                RuntimeValue::List(Box::new(l.into_iter().map(|f| f.macro_compile()).collect()))
+            Value::List(_) => {
+                RuntimeValue::Form(Box::new(Form::Value(self.clone())))
             }
             Value::Vector(v) => {
                 RuntimeValue::Vector(Box::new(v.into_iter().map(|f| f.macro_compile()).collect()))
@@ -934,7 +934,7 @@ impl Compile for SpecialForm {
                     }
                 }));
                 if let (Some(value), Some(arity)) = (variadic, variadic_arity) {
-                    f = f.into_iter().filter(|(k,_)| *k < arity).collect();
+                    f = f.into_iter().filter(|(k, _)| *k < arity).collect();
                     if !f.contains_key(&(arity - 1)) {
                         f.insert(arity - 1, value.clone());
                     }
@@ -1113,13 +1113,14 @@ pub grammar rdl() for str {
     /// Top level parser rule
     /// This doc comment has multiple lines to test support for that as well
     pub rule program() -> Vec<Form>
-        = f:form() ** _ { f }
+        = f:form() ** __ { f }
 
-    rule whitespace() = [' ' | '\n' | ',']
+    rule whitespace() = [' ' | '\n' | '\t' | ',']
 
     rule end_text() = !['a'..='z' | 'A'..='Z'| '0'..='9' | '*' | '+' | '!' | '-' | '_' | '\'' | '?' | '<' | '>' | '=']
 
-    rule _() = whitespace()*
+    rule _() = quiet!{whitespace()*}
+    rule __() = quiet!{end_text() _} / expected!("Delimiter")
 
     rule form() -> Form
         = v:value() { Form::Value(v) }
@@ -1148,15 +1149,17 @@ pub grammar rdl() for str {
 
     rule symbol() -> String
         // Fix '&'. Required for macros with binding forms. Not sure what to do about it.
-        = !number() s:$(['a'..='z' | 'A'..='Z' | '*' | '+' | '!' | '-' | '_' | '\'' | '?' | '<' | '>' | '=' | '&']
+        = quiet!{!number() s:$(['a'..='z' | 'A'..='Z' | '*' | '+' | '!' | '-' | '_' | '\'' | '?' | '<' | '>' | '=' | '&']
             ['a'..='z' | 'A'..='Z'| '0'..='9' | '*' | '+' | '!' | '-' | '_' | '\'' | '?' | '<' | '>' | '=']*)
-            { String::from(s) }
+            { String::from(s) }}
+        / expected!("Symbol")
 
     rule binding_symbol() -> String
         // Fix '&'. Required for macros with binding forms. Not sure what to do about it.
-        = !number() s:$(['a'..='z' | 'A'..='Z' | '*' | '+' | '!' | '-' | '_' | '\'' | '?' | '<' | '>' | '=']
+        = quiet!{!number() s:$(['a'..='z' | 'A'..='Z' | '*' | '+' | '!' | '-' | '_' | '\'' | '?' | '<' | '>' | '=']
             ['a'..='z' | 'A'..='Z'| '0'..='9' | '*' | '+' | '!' | '-' | '_' | '\'' | '?' | '<' | '>' | '=']*)
-            { String::from(s) }
+            { String::from(s) }}
+        / expected!("Binding Symbol")
 
     rule macro_symbol() -> String
         = !number() s:$(['a'..='z' | 'A'..='Z' | '*' | '+' | '!' | '-' | '_' | '\'' | '?' | '<' | '>' | '=']
@@ -1168,12 +1171,14 @@ pub grammar rdl() for str {
         / l:list() { Value::List(l) }
         / v:vector() { Value::Vector(v) }
         / s:set() { Value::Set(s) }
-        / n:number() {Value::Number(n) }
-        / qs:quote_string() {Value::QuoteString(qs) }
-        / "nil" end_text() { Value::Nil }
-        / k:keyword() {Value::Keyword(k) }
-        / c:character() {Value::Character(c) }
-        / b:boolean() {Value::Boolean(b) }
+        / quiet!{
+            n:number() {Value::Number(n) }
+            / qs:quote_string() {Value::QuoteString(qs) }
+            / "nil" end_text() { Value::Nil }
+            / k:keyword() {Value::Keyword(k) }
+            / c:character() {Value::Character(c) }
+            / b:boolean() {Value::Boolean(b) }}
+            / expected!("Value")
 
     rule character() -> char
         = "\\newline" { '\n' }
@@ -1230,30 +1235,37 @@ pub grammar rdl() for str {
     rule ratio() -> Number
         = s:sign()? n:integer_inner() "/" d:integer_inner() { Number::Ratio(format!("{}{}", s.unwrap_or(String::new()), n), d)}
 
+
+    rule form_end() = quiet!{")"} / expected!("Form End")
     rule normal_form() -> Vec<Form>
-        = "(" _ f:form() ** _ _ ")" { f }
+        = quiet!{"(" _ f:form() ** __ _ form_end() { f }} / expected!("Form")
 
     rule unquote_form() -> Vec<Form>
-        = "@(" _ f:form() ** _ _ ")" { f }
-        / "(" _ "unquote" _ f:form() ** _ _ ")" { f }
+        = quiet!{"@(" _ f:form() ** __ _ form_end() { f }
+        / "(" _ "unquote" _ f:form() ** __ _ form_end() { f }} / expected!("Form")
 
     rule map_pair() -> (Form,Form)
         = f1:form() _ f2:form() { (f1, f2) }
 
+    rule map_end() = quiet!{"}"} / expected!("Map End")
     rule map() -> Vec<(Form,Form)>
-        = "{" _ mp:map_pair() ** _ _ "}" { mp }
+        = quiet!{"{" _ mp:map_pair() ** __ _ map_end() { mp }} / expected!("Map")
 
+    rule list_end() = quiet!{")"} / expected!("List End")
     rule list() -> Vec<Form>
-        = "'(" _ f:form() ** _ _ ")" { f }
+        = quiet!{"'(" _ f:form() ** __ _ list_end() { f }} / expected!("List")
 
+
+    rule set_end() = quiet!{"}"} / expected!("Set End")
     rule set() -> Vec<Form>
-        = "#{" _ f:form() ** _ _ "}" { f }
+        = quiet!{"#{" _ f:form() ** __ _ set_end() { f }} / expected!("Set")
 
+    rule vector_end() = quiet!{"]"} / expected!("Vector End")
     rule vector() -> Vec<Form>
-        = "[" _ f:form() ** _ _ "]" { f }
+        = quiet!{"[" _ f:form() ** __ _ vector_end() { f }} / expected!("Vector")
 
     rule macro_form_inner() -> MacroForm
-    = s:symbol() _ "[" _ bf:binding_form() ** _ _ bfm:binding_form_more()? _ "]" _ f:form() { MacroForm::Function(s,bf,bfm,f) }
+    = s:symbol() _ "[" _ bf:binding_form() ** __ _ bfm:binding_form_more()? _ "]" _ f:form() { MacroForm::Function(s,bf,bfm,f) }
     / s:symbol() _ f:form() { MacroForm::Value(s,f) }
     rule macro_form() -> MacroForm
     = "(" _ "defmacro" _ mf:macro_form_inner() _ ")" { mf }
@@ -1275,82 +1287,82 @@ pub grammar rdl() for str {
         / f:try_form() { f }
 
     rule def_form() -> SpecialForm
-        = "def" end_text() _ s:symbol() _ f:form()? { SpecialForm::Def(s,f) }
+        = "def" __ s:symbol() _ f:form()? { SpecialForm::Def(s,f) }
 
     rule if_form() -> SpecialForm
-        = "if" end_text() _ f1:form() _ f2:form() _ f3:form()? { SpecialForm::If(f1,f2,f3) }
+        = "if" __ f1:form() __ f2:form() __? f3:form()? { SpecialForm::If(f1,f2,f3) }
 
     rule do_form() -> SpecialForm
-        = "do" end_text() _ f:form() ** _  { SpecialForm::Do(f) }
+        = "do" __ f:form() ** __  { SpecialForm::Do(f) }
 
     rule let_form() -> SpecialForm
-        = "let" end_text() _ "[" _ bff:binding_form_form() ** _ _  "]" _ f:form() ** _ { SpecialForm::Let(bff,f) }
+        = "let" __ "[" _ bff:binding_form_form() ** __ _  "]" _ f:form() ** __ { SpecialForm::Let(bff,f) }
 
     rule quote_form() -> SpecialForm
-        = "quote" end_text() _ f:form() { SpecialForm::Quote(f) }
+        = "quote" __ f:form() { SpecialForm::Quote(f) }
 
     rule var_form() -> SpecialForm
-        = "var" end_text() _ s:symbol() { SpecialForm::Var(s) }
+        = "var" __ s:symbol() { SpecialForm::Var(s) }
 
     rule fn_form() -> SpecialForm
-        = "fn" end_text() _ s:symbol()? _ fnb:fn_body() { SpecialForm::Fn(s, fnb) }
+        = "fn" __ s:symbol()? _ fnb:fn_body() { SpecialForm::Fn(s, fnb) }
 
     rule fn_body() -> Vec<(Vec<BindingForm>, Option<BindingForm>, Vec<Form>)>
         = sfb:single_fn_body() { vec![sfb]}
         / mfb:multi_fn_body()+ { mfb }
 
     rule single_fn_body() -> (Vec<BindingForm>, Option<BindingForm>, Vec<Form>)
-        = "[" _ bf:binding_form() ** _ _ bfm:binding_form_more()? _ "]" _ f:form() ** _ { (bf , bfm, f) }
+        = "[" _ bf:binding_form() ** __ _ bfm:binding_form_more()? _ "]" _ f:form() ** __ { (bf , bfm, f) }
 
     rule multi_fn_body() -> (Vec<BindingForm>, Option<BindingForm>, Vec<Form>)
         = _ "(" _ sfb:single_fn_body() _ ")" _ { sfb }
 
     rule loop_form() -> SpecialForm
-        = "loop" end_text() _ "[" _ bff:binding_form_form() ** _ _ "]" _ f:form() ** _ { SpecialForm::Loop(bff,f) }
+        = "loop" __ "[" _ bff:binding_form_form() ** __ _ "]" _ f:form() ** __ { SpecialForm::Loop(bff,f) }
 
     rule recur_form() -> SpecialForm
-        = "recur" end_text() _ f:form() ** _ _ { SpecialForm::Recur(f) }
+        = "recur" __ f:form() ** __ _ { SpecialForm::Recur(f) }
 
     rule throw_form() -> SpecialForm
-        = "throw" end_text() _ f:form() { SpecialForm::Throw(f) }
+        = "throw" __ f:form() { SpecialForm::Throw(f) }
 
     rule try_form() -> SpecialForm
-        = "try" end_text() { SpecialForm::Try }
+        = "try" __ { SpecialForm::Try }
 
     rule binding_form_form() -> (BindingForm,Form)
         = b:binding_form() _ f:form() { (b,f) }
 
     rule binding_form_more() -> BindingForm
-        = "&" end_text() _ bf:binding_form() { bf }
+        = "&" __ bf:binding_form() __ { bf }
 
     rule as_symbol() -> String
-    = ":as" end_text() _ s:symbol() { s }
+    = ":as" __ s:symbol() __ { s }
 
     rule binding_form() -> BindingForm
-        = _ s:binding_symbol() _ { BindingForm::Symbol(s) }
-        / _ bv:binding_vector() _ { bv }
-        / _ bm:binding_map() _ { bm }
+        = s:binding_symbol()  { BindingForm::Symbol(s) }
+        / bv:binding_vector() { bv }
+        / bm:binding_map()    { bm }
 
     rule binding_vector() -> BindingForm
-        = "[" bf:binding_form() ** _ _ bfm:binding_form_more()? _ s:as_symbol()? _ "]" { BindingForm::BindingVector(bf, bfm.map(|bfm| Box::new(bfm)), s) }
+        = "[" bf:binding_form() ** __ _ bfm:binding_form_more()? _ s:as_symbol()? _ "]" { BindingForm::BindingVector(bf, bfm.map(|bfm| Box::new(bfm)), s) }
 
     rule or_map_pair() -> (String,Form)
     = s:symbol() _ f:form() { (s, f) }
 
     rule or_map() -> Vec<(String,Form)>
-        = "{" _ mp:or_map_pair() ** _ _ "}" { mp }
+        = "{" _ mp:or_map_pair() ** __ _ "}" { mp }
 
     rule binding_map_or() -> Vec<(String,Form)>
-        = ":or" end_text() _ m:or_map() { m }
+        = ":or" __ m:or_map() { m }
 
     rule binding_map_keys() -> Vec<String>
-        = ":keys" end_text() _ "[" _ s:symbol() ** _ _ "]" { s }
+        = ":keys" __ "[" _ s:symbol() ** __ _ "]" { s }
 
     rule binding_map_pair() -> (BindingForm, Form)
     = bf:binding_form() _ f:form() { (bf, f) }
 
     rule binding_map() -> BindingForm
-        = "{" _ bmk:binding_map_keys()? _ bmp:binding_map_pair() ** _ _ s:as_symbol()? _ bmo:binding_map_or()? _ "}"
+        = "{" _ bmk:binding_map_keys()? _ bmp:binding_map_pair() ** __ _ s:as_symbol()? _ bmo:binding_map_or()? _ "}"
             { BindingForm::BindingMap(bmk,bmp,s,bmo) }
 
     }
