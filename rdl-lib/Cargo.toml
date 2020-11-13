@@ -17,6 +17,7 @@ num-traits = "*"
 lazy_static = "*"
 arc-swap = "*"
 persistent-list = "*"
+float-ord = "*"
 
 [dev-dependencies]
 #matches = "*"

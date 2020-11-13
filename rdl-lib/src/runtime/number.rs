@@ -2,18 +2,16 @@ use std::{
     cmp,
     convert::{From, TryFrom},
     hash::Hash,
-    mem,
     ops::{Add, Div, Mul, Rem, Sub},
 };
 
 use bigdecimal::BigDecimal;
-use num::{complex::Complex64, rational::Rational64, BigInt, BigRational, Complex, Integer};
+use float_ord::FloatOrd;
+use num::{rational::Rational64, BigInt, BigRational, Integer};
 use num_traits::{
     CheckedAdd, CheckedDiv, CheckedMul, CheckedRem, CheckedSub, One, ToPrimitive, Zero,
     
 };
-
-pub type BigComplex = Complex<BigDecimal>;
 
 ///
 ///
@@ -23,11 +21,9 @@ pub enum Number {
     Int(i64),
     Float(f64),
     Ratio(Rational64),
-    Complex(Complex64),
     BigInt(Box<BigInt>),
     BigFloat(Box<BigDecimal>),
     BigRatio(Box<BigRational>),
-    BigComplex(Box<BigComplex>),
 }
 
 // Promote Rules
@@ -297,11 +293,9 @@ impl Zero for Number {
                 Number::Int,
                 Number::Float,
                 Number::Ratio,
-                Number::Complex,
                 Number::BigInt,
                 Number::BigFloat,
-                Number::BigRatio,
-                Number::BigComplex
+                Number::BigRatio
             }
         }
     }
@@ -320,13 +314,14 @@ impl PartialEq for Number {
             bin_sym {
                 (v1, v2) => cmp::PartialEq::eq(v1,v2),
                 Number::Int,
-                Number::Float,
                 Number::Ratio,
-                Number::Complex,
                 Number::BigInt,
                 Number::BigFloat,
-                Number::BigRatio,
-                Number::BigComplex
+                Number::BigRatio
+            }
+            bin_sym {
+                (v1, v2) => cmp::PartialEq::eq(&FloatOrd(*v1),&FloatOrd(*v2)),
+                Number::Float
             }
             bin_sym {
                 (v1, v2) => cmp::PartialEq::eq(v1,&Promote::<Rational64>::promote(v2)),
@@ -341,10 +336,6 @@ impl PartialEq for Number {
                 (Number::BigInt,Number::Int)
             }
             bin_sym {
-                (v1, v2) => cmp::PartialEq::eq(v1,&Promote::<Complex64>::promote(v2)),
-                (Number::Complex,Number::Float)
-            }
-            bin_sym {
                 (v1, v2) => cmp::PartialEq::eq(v1.as_ref(),&Promote::<BigRational>::promote(v2)),
                 (Number::BigRatio,Number::Int),
                 (Number::BigRatio,Number::Ratio),
@@ -357,14 +348,6 @@ impl PartialEq for Number {
                 (Number::BigFloat,Number::BigInt),
                 (Number::BigFloat,Number::BigRatio)
             }
-            bin_sym {
-                (v1, v2) => cmp::PartialEq::eq(v1.as_ref(),&Promote::<BigComplex>::promote(v2)),
-                (Number::BigComplex,Number::Int),
-                (Number::BigComplex,Number::Ratio),
-                (Number::BigComplex,Number::BigInt),
-                (Number::BigComplex,Number::BigFloat),
-                (Number::BigComplex,Number::BigRatio)
-            }
             ensure_rest {
                 _ => false,
                 (Number::Float,Number::Int),
@@ -372,13 +355,6 @@ impl PartialEq for Number {
                 (Number::Float,Number::BigInt),
                 (Number::Float,Number::BigFloat),
                 (Number::Float,Number::BigRatio),
-                (Number::Float,Number::BigComplex),
-                (Number::Complex,Number::Int),
-                (Number::Complex,Number::Ratio),
-                (Number::Complex,Number::BigInt),
-                (Number::Complex,Number::BigFloat),
-                (Number::Complex,Number::BigRatio),
-                (Number::Complex,Number::BigComplex)
             }
         }
     }
@@ -391,11 +367,14 @@ impl PartialOrd for Number {
             bin_sym {
                 (v1, v2) => cmp::PartialOrd::partial_cmp(v1,v2),
                 Number::Int,
-                Number::Float,
                 Number::Ratio,
                 Number::BigInt,
                 Number::BigFloat,
                 Number::BigRatio
+            }
+            bin_sym {
+                (v1, v2) => cmp::PartialOrd::partial_cmp(&FloatOrd(*v1),&FloatOrd(*v2)),
+                Number::Float
             }
             bin_asym {
                 (v1, v2) => (
@@ -415,7 +394,7 @@ impl PartialOrd for Number {
                 (Number::Float,Number::BigFloat),
                 (Number::Float,Number::BigRatio)
             }
-            bin_sym {
+            bin_sym { // FIXME
                 (v1, v2) => cmp::PartialOrd::partial_cmp(&Promote::<BigRational>::promote(v1),&Promote::<BigRational>::promote(v2)),
                 (Number::Ratio,Number::BigInt)
             }
@@ -447,21 +426,6 @@ impl PartialOrd for Number {
             }
             ensure_rest {
                 _ => None,
-                (Number::Complex,Number::Int),
-                (Number::Complex,Number::Ratio),
-                (Number::Complex,Number::Float),
-                (Number::Complex,Number::BigInt),
-                (Number::Complex,Number::BigFloat),
-                (Number::Complex,Number::BigRatio),
-                (Number::Complex,Number::BigComplex),
-                (Number::BigComplex,Number::Int),
-                (Number::BigComplex,Number::Float),
-                (Number::BigComplex,Number::Ratio),
-                (Number::BigComplex,Number::BigInt),
-                (Number::BigComplex,Number::BigFloat),
-                (Number::BigComplex,Number::BigRatio),
-                Number::BigComplex,
-                Number::Complex
             }
         }
     }
@@ -469,11 +433,6 @@ impl PartialOrd for Number {
 
 impl Ord for Number {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        // TODO Define a total ordering on floats? Like java. Probably need to change Eq then too.
-        // same for Complex but here almost any mathematical operation breaks it, while for floats
-        // it is only for NaN. Should probably always panic at this level and actually check the
-        // the type usage at a higher order. Like never use complex or float as keys in orderer
-        // (nor hashed for that matter) data structures.
         cmp::PartialOrd::partial_cmp(self, other).unwrap()
     }
 }
@@ -483,21 +442,12 @@ impl Hash for Number {
         match self {
             Number::Int(v) => v.hash(state),
             Number::Float(v) => {
-                // TODO Decide how to handle this for floats so it is consistent with Eq etc.
-                // see comment in Ord
-                unsafe { mem::transmute::<f64, u64>(*v).hash(state) }
+                FloatOrd(*v).hash(state)
             }
             Number::Ratio(v) => v.hash(state),
-            Number::Complex(v) => {
-                // TODO Decide how to handle this for floats so it is consistent with Eq etc.
-                // see comment in Ord
-                unsafe { mem::transmute::<f64, u64>(v.re).hash(state) }
-                unsafe { mem::transmute::<f64, u64>(v.im).hash(state) }
-            }
             Number::BigInt(v) => v.hash(state),
             Number::BigFloat(v) => v.hash(state),
             Number::BigRatio(v) => v.hash(state),
-            Number::BigComplex(v) => v.hash(state),
         }
     }
 }
@@ -565,12 +515,6 @@ macro_rules! define_binop_internal {
             (Number::Ratio(v1), Number::Float(v2)) => {
                 $imp::$method(Promote::<f64>::promote(v1), v2).into()
             }
-            (Number::Int(v1), Number::Complex(v2)) => {
-                $imp::$method(Into::<Complex64>::into(*v1 as f64), v2).into()
-            }
-            (Number::Complex(v1), Number::Int(v2)) => {
-                $imp::$method(v1, Into::<Complex64>::into(*v2 as f64)).into()
-            }
             (Number::Int(v1), Number::BigInt(v2)) => {
                 $imp::$method(Into::<BigInt>::into(*v1), v2.as_ref()).into()
             }
@@ -591,10 +535,6 @@ macro_rules! define_binop_internal {
                     n.into()
                 }
             }
-            (Number::Int(v1), Number::BigComplex(v2)) => {
-                $imp::$method(Promote::<BigComplex>::promote(v1), v2.as_ref()).into()
-            }
-            (Number::Float(v1), Number::Complex(v2)) => $imp::$method(v1, v2).into(),
             (Number::Float(v1), Number::BigInt(v2)) => {
                 if let Ok(v1) = BigDecimal::try_from(*v1) {
                     $imp::$method(v1, Into::<BigDecimal>::into(v2.as_ref().clone())).into()
@@ -614,20 +554,6 @@ macro_rules! define_binop_internal {
                     $imp::$method(v1, Promote::<BigDecimal>::promote(v2.as_ref())).into()
                 } else {
                     $imp::$method(v1, v2.as_ref().to_f64().unwrap_or(f64::NAN)).into()
-                }
-            }
-            (Number::Float(v1), Number::BigComplex(v2)) => {
-                if let Ok(v1) = BigDecimal::try_from(*v1) {
-                    $imp::$method(Promote::<BigComplex>::promote(v1), v2.as_ref()).into()
-                } else {
-                    $imp::$method(
-                        Promote::<Complex64>::promote(v1),
-                        Complex64::new(
-                            v2.re.to_f64().unwrap_or(f64::NAN),
-                            v2.im.to_f64().unwrap_or(f64::NAN),
-                        ),
-                    )
-                    .into()
                 }
             }
             (Number::Ratio(v1), Number::Ratio(v2)) => match $checked_imp::$checked_method(v1, v2) {
@@ -650,9 +576,6 @@ macro_rules! define_binop_internal {
                     }
                 }
             },
-            (Number::Ratio(v1), Number::Complex(v2)) => {
-                $imp::$method(Promote::<Complex64>::promote(v1), v2).into()
-            }
             (Number::Ratio(v1), Number::BigInt(v2)) => {
                 let n = $imp::$method(Promote::<BigRational>::promote(v1), v2.as_ref());
                 if n.is_integer() {
@@ -670,65 +593,6 @@ macro_rules! define_binop_internal {
                     n.numer().into()
                 } else {
                     n.into()
-                }
-            }
-            (Number::Ratio(v1), Number::BigComplex(v2)) => {
-                $imp::$method(Promote::<BigComplex>::promote(v1), v2.as_ref()).into()
-            }
-            (Number::Complex(v1), Number::Float(v2)) => $imp::$method(v1, v2).into(),
-            (Number::Complex(v1), Number::Ratio(v2)) => {
-                $imp::$method(v1, *v2.numer() as f64 / *v2.denom() as f64).into()
-            }
-            (Number::Complex(v1), Number::Complex(v2)) => $imp::$method(v1, v2).into(),
-            (Number::Complex(v1), Number::BigInt(v2)) => {
-                if let (Ok(im), Ok(re)) = (BigDecimal::try_from(v1.im), BigDecimal::try_from(v1.re))
-                {
-                    $imp::$method(
-                        Complex::new(re, im),
-                        Promote::<BigComplex>::promote(v2.as_ref()),
-                    )
-                    .into()
-                } else {
-                    $imp::$method(v1, v2.as_ref().to_f64().unwrap_or(f64::NAN)).into()
-                }
-            }
-            (Number::Complex(v1), Number::BigFloat(v2)) => {
-                if let (Ok(im), Ok(re)) = (BigDecimal::try_from(v1.im), BigDecimal::try_from(v1.re))
-                {
-                    $imp::$method(
-                        Complex::new(re, im),
-                        Promote::<BigComplex>::promote(v2.as_ref()),
-                    )
-                    .into()
-                } else {
-                    $imp::$method(v1, v2.as_ref().to_f64().unwrap_or(f64::NAN)).into()
-                }
-            }
-            (Number::Complex(v1), Number::BigRatio(v2)) => {
-                if let (Ok(im), Ok(re)) = (BigDecimal::try_from(v1.im), BigDecimal::try_from(v1.re))
-                {
-                    $imp::$method(
-                        Complex::new(re, im),
-                        Promote::<BigComplex>::promote(v2.as_ref()),
-                    )
-                    .into()
-                } else {
-                    $imp::$method(v1, v2.as_ref().to_f64().unwrap_or(f64::NAN)).into()
-                }
-            }
-            (Number::Complex(v1), Number::BigComplex(v2)) => {
-                if let (Ok(im), Ok(re)) = (BigDecimal::try_from(v1.im), BigDecimal::try_from(v1.re))
-                {
-                    $imp::$method(Complex::new(re, im), v2.as_ref()).into()
-                } else {
-                    $imp::$method(
-                        v1,
-                        Complex64::new(
-                            v2.re.to_f64().unwrap_or(f64::NAN),
-                            v2.im.to_f64().unwrap_or(f64::NAN),
-                        ),
-                    )
-                    .into()
                 }
             }
             (Number::BigInt(v1), Number::Float(v2)) => {
@@ -749,18 +613,6 @@ macro_rules! define_binop_internal {
                     n.into()
                 }
             }
-            (Number::BigInt(v1), Number::Complex(v2)) => {
-                if let (Ok(im), Ok(re)) = (BigDecimal::try_from(v2.im), BigDecimal::try_from(v2.re))
-                {
-                    $imp::$method(
-                        Promote::<BigComplex>::promote(v1.as_ref()),
-                        Complex::new(re, im),
-                    )
-                    .into()
-                } else {
-                    $imp::$method(v1.as_ref().to_f64().unwrap_or(f64::NAN), v2).into()
-                }
-            }
             (Number::BigInt(v1), Number::BigInt(v2)) => {
                 $imp::$method(v1.as_ref(), v2.as_ref()).into()
             }
@@ -774,9 +626,6 @@ macro_rules! define_binop_internal {
                 } else {
                     n.into()
                 }
-            }
-            (Number::BigInt(v1), Number::BigComplex(v2)) => {
-                $imp::$method(Promote::<BigComplex>::promote(v1.as_ref()), v2.as_ref()).into()
             }
             (Number::BigFloat(v1), Number::Float(v2)) => {
                 if let Ok(v2) = BigDecimal::try_from(*v2) {
@@ -796,18 +645,6 @@ macro_rules! define_binop_internal {
                     .into()
                 }
             }
-            (Number::BigFloat(v1), Number::Complex(v2)) => {
-                if let (Ok(im), Ok(re)) = (BigDecimal::try_from(v2.im), BigDecimal::try_from(v2.re))
-                {
-                    $imp::$method(
-                        Promote::<BigComplex>::promote(v1.as_ref()),
-                        Complex::new(re, im),
-                    )
-                    .into()
-                } else {
-                    $imp::$method(v1.as_ref().to_f64().unwrap_or(f64::NAN), v2).into()
-                }
-            }
             (Number::BigFloat(v1), Number::BigInt(v2)) => {
                 $imp::$method(v1.as_ref(), Into::<BigDecimal>::into(v2.as_ref().clone())).into()
             }
@@ -816,9 +653,6 @@ macro_rules! define_binop_internal {
             }
             (Number::BigFloat(v1), Number::BigRatio(v2)) => {
                 $imp::$method(v1.as_ref(), Promote::<BigDecimal>::promote(v2.as_ref())).into()
-            }
-            (Number::BigFloat(v1), Number::BigComplex(v2)) => {
-                $imp::$method(Promote::<BigComplex>::promote(v1.as_ref()), v2.as_ref()).into()
             }
             (Number::BigRatio(v1), Number::Int(v2)) => {
                 let n = $imp::$method(v1.as_ref(), &Promote::<BigRational>::promote(v2));
@@ -843,18 +677,6 @@ macro_rules! define_binop_internal {
                     n.into()
                 }
             }
-            (Number::BigRatio(v1), Number::Complex(v2)) => {
-                if let (Ok(im), Ok(re)) = (BigDecimal::try_from(v2.im), BigDecimal::try_from(v2.re))
-                {
-                    $imp::$method(
-                        Promote::<BigComplex>::promote(v1.as_ref()),
-                        Complex::new(re, im),
-                    )
-                    .into()
-                } else {
-                    $imp::$method(v1.as_ref().to_f64().unwrap_or(f64::NAN), v2).into()
-                }
-            }
             (Number::BigRatio(v1), Number::BigInt(v2)) => $imp::$method(
                 Promote::<BigDecimal>::promote(v1.as_ref()),
                 Into::<BigDecimal>::into(v2.as_ref().clone()),
@@ -870,56 +692,6 @@ macro_rules! define_binop_internal {
                 } else {
                     n.into()
                 }
-            }
-            (Number::BigRatio(v1), Number::BigComplex(v2)) => {
-                $imp::$method(Promote::<BigComplex>::promote(v1.as_ref()), v2.as_ref()).into()
-            }
-            (Number::BigComplex(v1), Number::Int(v2)) => {
-                $imp::$method(v1.as_ref(), Promote::<BigComplex>::promote(v2)).into()
-            }
-            (Number::BigComplex(v1), Number::Float(v2)) => {
-                if let Ok(v2) = BigDecimal::try_from(*v2) {
-                    $imp::$method(v1.as_ref(), Promote::<BigComplex>::promote(v2)).into()
-                } else {
-                    $imp::$method(
-                        Complex64::new(
-                            v1.re.to_f64().unwrap_or(f64::NAN),
-                            v1.im.to_f64().unwrap_or(f64::NAN),
-                        ),
-                        v2,
-                    )
-                    .into()
-                }
-            }
-            (Number::BigComplex(v1), Number::Ratio(v2)) => {
-                $imp::$method(v1.as_ref(), Promote::<BigComplex>::promote(v2)).into()
-            }
-            (Number::BigComplex(v1), Number::Complex(v2)) => {
-                if let (Ok(im), Ok(re)) = (BigDecimal::try_from(v2.im), BigDecimal::try_from(v2.re))
-                {
-                    $imp::$method(v1.as_ref(), Complex::new(re, im)).into()
-                } else {
-                    $imp::$method(
-                        Complex64::new(
-                            v1.re.to_f64().unwrap_or(f64::NAN),
-                            v1.im.to_f64().unwrap_or(f64::NAN),
-                        ),
-                        v2,
-                    )
-                    .into()
-                }
-            }
-            (Number::BigComplex(v1), Number::BigInt(v2)) => {
-                $imp::$method(v1.as_ref(), Promote::<BigComplex>::promote(v2.as_ref())).into()
-            }
-            (Number::BigComplex(v1), Number::BigFloat(v2)) => {
-                $imp::$method(v1.as_ref(), Promote::<BigComplex>::promote(v2.as_ref())).into()
-            }
-            (Number::BigComplex(v1), Number::BigRatio(v2)) => {
-                $imp::$method(v1.as_ref(), Promote::<BigComplex>::promote(v2.as_ref())).into()
-            }
-            (Number::BigComplex(v1), Number::BigComplex(v2)) => {
-                $imp::$method(v1.as_ref(), v2.as_ref()).into()
             }
         }
     };
@@ -1091,15 +863,12 @@ define_from! {
     Number::Int => {bool,i8,u8,i16,u16,i32,u32,i64},
     Number::Float => {f32, f64},
     Number::Ratio => Rational64,
-    Number::Complex => Complex64,
     BOX Number::BigInt => {u64, #[cfg(has_i128)] i128, #[cfg(has_u128)] u128, BigInt},
     Number::BigInt => Box<BigInt>,
     BOX Number::BigFloat => BigDecimal,
     Number::BigFloat => Box<BigDecimal>,
     BOX Number::BigRatio => BigRational,
     Number::BigRatio => Box<BigRational>,
-    BOX Number::BigComplex => BigComplex,
-    Number::BigComplex => Box<BigComplex>,
 }
 pub trait Promote<T>: Sized {
     /// Performs the conversion.
@@ -1151,19 +920,12 @@ macro_rules! define_promote {
     };
 }
 
-define_promote!(for Complex64 where value: Rational64  => Complex::new(*value.numer() as f64 / *value.denom() as f64,f64::zero()));
 define_promote!(for BigRational where value: Rational64  => BigRational::new(value.numer().clone().into(), value.denom().clone().into()));
 define_promote!(for BigRational where value: i64  => BigRational::from_integer(value.clone().into()));
 define_promote!(for BigRational where value: BigInt  => Into::<BigRational>::into(value.clone()));
 define_promote!(for Rational64 where value: i64  => Rational64::from_integer(value.clone().into()));
 define_promote!(for BigInt where value: i64  => Into::<BigInt>::into(value.clone()));
-define_promote!(for Complex64 where value: f64  => Into::<Complex64>::into(value.clone()));
 define_promote!(for f64 where value: Rational64  => *value.numer() as f64 / *value.denom()  as f64);
-define_promote!(for BigComplex where value: i64  => Complex::new(Into::<BigDecimal>::into(value.clone()),BigDecimal::zero()));
-define_promote!(for BigComplex where value: BigInt  => Complex::new(Into::<BigDecimal>::into(value.clone()),BigDecimal::zero()));
-define_promote!(for BigComplex where value: BigDecimal  => Complex::new(value.clone(),BigDecimal::zero()));
-define_promote!(for BigComplex where value: BigRational  => Complex::new(Into::<BigDecimal>::into(value.numer().clone()) / Into::<BigDecimal>::into(value.denom().clone()),BigDecimal::zero()));
-define_promote!(for BigComplex where value: Rational64  => Complex::new(Into::<BigDecimal>::into(*value.numer()) / Into::<BigDecimal>::into(*value.denom()),BigDecimal::zero()));
 define_promote!(for BigDecimal where value: BigRational  => Into::<BigDecimal>::into(value.numer().clone()) / Into::<BigDecimal>::into(value.denom().clone()));
 define_promote!(for BigDecimal where value: Rational64  => Into::<BigDecimal>::into(*value.numer()) / Into::<BigDecimal>::into(*value.denom()));
 define_promote!(for BigDecimal where value: i64  => Into::<BigDecimal>::into(value.clone()));
@@ -1201,11 +963,9 @@ macro_rules! impl_to_primitive {
             Number::Int(v) => ToPrimitive::$method(v),
             Number::Float(v) => ToPrimitive::$method(v),
             Number::Ratio(v) => ToPrimitive::$method(v),
-            Number::Complex(v) => ToPrimitive::$method(v),
             Number::BigInt(v) => ToPrimitive::$method(v.as_ref()),
             Number::BigFloat(v) => ToPrimitive::$method(v.as_ref()),
             Number::BigRatio(v) => ToPrimitive::$method(v.as_ref()),
-            Number::BigComplex(v) => ToPrimitive::$method(v.as_ref()),
         }
     };
 }
@@ -1235,11 +995,9 @@ mod test {
             0 as i32, 0 as u32, 0 as i64 => Number::Int,
             0.0 as f32, 0.0 as f64 => Number::Float,
             Rational64::zero() => Number::Ratio,
-            Complex64::zero() => Number::Complex,
             0 as u64, BigInt::zero(), Box::new(BigInt::zero()) => Number::BigInt,
             BigDecimal::zero(), Box::new(BigDecimal::zero()) => Number::BigFloat,
-            BigRational::zero(), Box::new(BigRational::zero()) => Number::BigRatio,
-            BigComplex::zero(), Box::new(BigComplex::zero()) => Number::BigComplex
+            BigRational::zero(), Box::new(BigRational::zero()) => Number::BigRatio
         );
         #[cfg(has_i128)]
         test_into! (0 as i128 => Number::BigInt);
@@ -1255,8 +1013,6 @@ mod test {
         let bf: &Number = &BigDecimal::one().into();
         let sr: &Number = &Rational64::new(1, 3).into();
         let br: &Number = &BigRational::new(1.into(), 3.into()).into();
-        let sc: &Number = &Complex64::new(0.0, 1.0).into();
-        let bc: &Number = &BigComplex::new(0.into(), 1.into()).into();
         macro_rules! test_type_combination {
             ($v1:ident {} $v2:ident => $type:path) => {};
             ($v1:ident {+ $($rest:tt)*} $v2:ident => $type:path) => {
@@ -1284,20 +1040,16 @@ mod test {
         assert_matches!(si, Number::Int(_));
         assert_matches!(sf, Number::Float(_));
         assert_matches!(sr, Number::Ratio(_));
-        assert_matches!(sc, Number::Complex(_));
         assert_matches!(bi, Number::BigInt(_));
         assert_matches!(br, Number::BigRatio(_));
         assert_matches!(bf, Number::BigFloat(_));
-        assert_matches!(bc, Number::BigComplex(_));
         // No-promotion
         test_type_combination!(si {+ * / - %} si => Number::Int);
         test_type_combination!(sf {+ * / - %} sf => Number::Float);
         test_type_combination!(sr {+ *} sr => Number::Ratio);
-        test_type_combination!(sc {+ * / - %} sc => Number::Complex);
         test_type_combination!(bi {+ * / - %} bi => Number::BigInt);
         test_type_combination!(br {+ *} br => Number::BigRatio);
         test_type_combination!(bf {+ * / - %} bf => Number::BigFloat);
-        test_type_combination!(bc {+ * / - %} bc => Number::BigComplex);
 
         // Int promotions
         test_type_combination!(sr {/ - %} sr => Number::Int);
@@ -1309,11 +1061,6 @@ mod test {
         test_type_combination!(si {+ * / - %} sf => Number::Float);
 
         // Ratio promotions
-
-        // Complex promotions
-        test_type_combination!(si {+ * / - %} sc => Number::Complex);
-        test_type_combination!(sf {+ * / - %} sc => Number::Complex);
-        test_type_combination!(sr {+ * / - %} sc => Number::Complex);
 
         // BigInt promotions
         let si_max: &Number = &i64::MAX.into();
@@ -1341,15 +1088,6 @@ mod test {
         test_type_combination!(si {+ * / - %} bf => Number::BigFloat);
         test_type_combination!(bi {+ * / - %} bf => Number::BigFloat);
 
-        // BigComplex promotions
-        test_type_combination!(si {+ * / - %} bc => Number::BigComplex);
-        test_type_combination!(sf {+ * / - %} bc => Number::BigComplex);
-        test_type_combination!(sr {+ * / - %} bc => Number::BigComplex);
-        test_type_combination!(sc {+ * / - %} bc => Number::BigComplex);
-        test_type_combination!(bi {+ * / - %} bc => Number::BigComplex);
-        test_type_combination!(br {+ * / - %} bc => Number::BigComplex);
-        test_type_combination!(bf {+ * / - %} bc => Number::BigComplex);
-
         // Float Specials
         macro_rules! all_promote {
             (@parse {$e1:ident},{$($e2:ident),*} => $path:path) => {
@@ -1367,12 +1105,8 @@ mod test {
         let sf_nan: &Number = &f64::NAN.into();
         let sf_neg_inf: &Number = &f64::NEG_INFINITY.into();
         let sf_pos_inf: &Number = &f64::INFINITY.into();
-        let sc_nan: &Number = &Into::<Complex64>::into(f64::NAN).into();
-        let sc_neg_inf: &Number = &Into::<Complex64>::into(f64::NEG_INFINITY).into();
-        let sc_pos_inf: &Number = &Into::<Complex64>::into(f64::INFINITY).into();
 
         all_promote!({sf_nan,sf_neg_inf,sf_pos_inf},{si,sf,sr,bi,bf,br,bf} => Number::Float);
-        all_promote!({sc_nan,sc_neg_inf,sc_pos_inf},{si,sf,sr,sc,bi,bf,br,bf} => Number::Complex);
     }
 
     #[test]
@@ -1460,8 +1194,6 @@ mod test {
         let bf_pos: &Number = &BigDecimal::one().into();
         let sr_pos: &Number = &Rational64::one().into();
         let br_pos: &Number = &BigRational::one().into();
-        let sc_pos: &Number = &Complex64::one().into();
-        let bc_pos: &Number = &BigComplex::one().into();
 
         let si_neg: &Number = &(-1).into();
         let bi_neg: &Number = &(-BigInt::one()).into();
@@ -1469,17 +1201,10 @@ mod test {
         let bf_neg: &Number = &(-BigDecimal::one()).into();
         let sr_neg: &Number = &(-Rational64::one()).into();
         let br_neg: &Number = &(-BigRational::one()).into();
-        let sc_neg: &Number = &(-Complex64::one()).into();
-        let bc_neg: &Number = &(-BigComplex::one()).into();
 
         let sf_nan: &Number = &f64::NAN.into();
         let sf_neg_inf: &Number = &f64::NEG_INFINITY.into();
         let sf_pos_inf: &Number = &f64::INFINITY.into();
-        let sc_0_nan: &Number = &Complex64::new(0.0, f64::NAN).into();
-        let sc_nan_0: &Number = &Into::<Complex64>::into(f64::NAN).into();
-        let sc_nan_nan: &Number = &Complex64::new(f64::NAN, f64::NAN).into();
-        let sc_neg_inf: &Number = &Into::<Complex64>::into(f64::NEG_INFINITY).into();
-        let sc_pos_inf: &Number = &Into::<Complex64>::into(f64::INFINITY).into();
 
         test_cross_combination_sym!(
             {sf_nan},{+ - * / %},
@@ -1491,26 +1216,6 @@ mod test {
             @ Number::Float{res} => res.is_nan()
         );
 
-        test_cross_combination_sym!(
-            {sf_nan},{+ - * / %},
-            {
-                sc_pos,bc_pos,sc_neg,bc_neg,
-                sc_0_nan,sc_nan_0,sc_nan_nan,
-                sc_neg_inf,sc_pos_inf
-            }
-            @ Number::Complex{res} => res.is_nan()
-        );
-
-        test_cross_combination_sym!(
-            {sc_0_nan,sc_nan_0,sc_nan_nan},{+ - * / %},
-            {
-                si_pos,bi_pos,sf_pos,bf_pos,sr_pos,br_pos,sc_pos,bc_pos,
-                si_neg,bi_neg,sf_neg,bf_neg,sr_neg,br_neg,sc_neg,bc_neg,
-                sf_nan,sf_neg_inf,sf_pos_inf,
-                sc_0_nan,sc_nan_0,sc_nan_nan,sc_neg_inf,sc_pos_inf
-            }
-            @ Number::Complex{res} => res.is_nan()
-        );
         test_cross_combination!(
             {sf_pos_inf,sf_neg_inf},{%},
             {
@@ -1519,15 +1224,6 @@ mod test {
                 sf_nan,sf_neg_inf,sf_pos_inf
             }
             @ Number::Float{res} => res.is_nan()
-        );
-        test_cross_combination!(
-            {sc_neg_inf,sc_neg_inf},{%},
-            {
-                si_pos,bi_pos,sf_pos,bf_pos,sr_pos,br_pos,
-                si_neg,bi_neg,sf_neg,bf_neg,sr_neg,br_neg,
-                sf_nan,sf_neg_inf,sf_pos_inf
-            }
-            @ Number::Complex{res} => res.is_nan()
         );
     }
 
@@ -1574,33 +1270,28 @@ mod test {
         let sr1: &Number = &Rational64::one().into();
         let br0: &Number = &BigRational::zero().into();
         let br1: &Number = &BigRational::one().into();
-        let sc0: &Number = &Complex64::zero().into();
-        let sc1: &Number = &Complex64::one().into();
-        let bc0: &Number = &BigComplex::zero().into();
-        let bc1: &Number = &BigComplex::one().into();
 
         // Integer based
-        cross_assert_eq! ({si0,bi0,bf0,sr0,br0,bc0});
-        cross_assert_eq! ({si1,bi1,bf1,sr1,br1,bc1});
+        cross_assert_eq! ({si0,bi0,bf0,sr0,br0});
+        cross_assert_eq! ({si1,bi1,bf1,sr1,br1});
         cross_assert_ne! (
-            {si0,bi0,bf0,sr0,br0,bc0,sf0,sc0},
-            {si1,bi1,bf1,sr1,br1,bc1,sf1,sc1}
+            {si0,bi0,bf0,sr0,br0,sf0},
+            {si1,bi1,bf1,sr1,br1,sf1}
         );
 
         // Float based
-        cross_assert_eq! ({sf0,sc0});
-        cross_assert_eq! ({sf1,sc1});
+        cross_assert_eq! ({sf0});
+        cross_assert_eq! ({sf1});
         cross_assert_ne! (
-            {sf0,sc0,si1,bi1,bf1,sr1,br1,bc1},
-            {sf1,sc1,si0,bi0,bf0,sr0,br0,bc0}
+            {sf0,si1,bi1,bf1,sr1,br1},
+            {sf1,si0,bi0,bf0,sr0,br0}
         );
 
         // Float NAN
         let sf_nan: &Number = &f64::NAN.into();
-        let sc_nan: &Number = &Into::<Complex64>::into(f64::NAN).into();
-        cross_assert_ne! (
-            {sf_nan,sc_nan},
-            {sf_nan,sc_nan,si0,bi0,bf0,sr0,br0,bc0,sf0,sc0,si1,bi1,bf1,sr1,br1,bc1,sf1,sc1}
+        cross_assert_eq! (
+            {sf_nan},
+            {sf_nan}
         );
     }
 }
