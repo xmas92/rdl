@@ -413,7 +413,9 @@ intrinsic_function!(
     }
 );
 #[cfg(test)]
-use num::{BigInt, BigRational};
+use num::{BigInt};
+#[cfg(test)]
+use std::convert::TryInto;
 
 #[test]
 fn arithmetic_basic_test() {
@@ -423,8 +425,8 @@ fn arithmetic_basic_test() {
     let bigint1 = RuntimeValue::BigInteger(Box::new(BigInt::from(1)));
     let float0 = RuntimeValue::Float(0.);
     let float1 = RuntimeValue::Float(1.);
-    let bigfloat0 = RuntimeValue::BigFloat(Box::new(BigRational::from_float(0.).unwrap()));
-    let bigfloat1 = RuntimeValue::BigFloat(Box::new(BigRational::from_float(1.).unwrap()));
+    let bigfloat0 = RuntimeValue::BigFloat(Box::new((0.).try_into().unwrap()));
+    let bigfloat1 = RuntimeValue::BigFloat(Box::new((1.).try_into().unwrap()));
 
     let plus_fn = plus::function();
     let minus_fn = minus::function();
@@ -598,7 +600,7 @@ fn arithmetic_error_test() {
     let int = RuntimeValue::Integer(0);
     let bigint = RuntimeValue::BigInteger(Box::new(BigInt::from(0)));
     let float = RuntimeValue::Float(0.);
-    let bigfloat = RuntimeValue::BigFloat(Box::new(BigRational::from_float(0.).unwrap()));
+    let bigfloat = RuntimeValue::BigFloat(Box::new((0.).try_into().unwrap()));
 
     let plus_fn = plus::function();
     let minus_fn = minus::function();
