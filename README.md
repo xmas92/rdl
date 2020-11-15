@@ -59,7 +59,7 @@ The of the great benefits with a Data language that can be compiled but also be 
   * >Facilitating high-level interactions between Wasm modules and JavaScript
   * I don't think I've ever had a more seamless experience with just getting something that if of this scope to just work out of the box. I truly hope Wasm is the future of the internet.
 
-    [Docs »](https://docs.platformio.org/en/latest/index.html)
+
 
 ## How it was made
 
