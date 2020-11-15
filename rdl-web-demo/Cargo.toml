@@ -3,7 +3,6 @@ name = "rdl-web-demo"
 version = "0.1.0"
 authors = ["Axel Boldt-Christmas <xmas1915@gmail.com>"]
 edition = "2018"
-license = "MIT"
 license-file = "../LICENSE"
 
 [lib]
@@ -49,6 +48,3 @@ features = [
 [dev-dependencies]
 wasm-bindgen-test = "0.2"
 
-[profile.release]
-# Tell `rustc` to optimize for small code size.
-opt-level = "s"
