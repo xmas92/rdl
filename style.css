@@ -1,0 +1,33 @@
+html, body {
+    display: flex;
+    height: 100vh;
+    width: 100vw;
+    margin: 0;
+}
+.flex-container {
+    display: flex;
+    flex-direction: row;
+    width: 100vw;
+    overflow: hidden;
+}
+
+
+.flex-item-left {
+    flex: 0 0 350px;
+}
+  
+.flex-item-right {
+    flex: 100%;
+    overflow: auto;
+}
+@media (max-width: 750px) {
+    .flex-container {
+        flex-direction: column;
+    }
+    .flex-item-left {
+        flex: 0 0 260px;
+    }
+    .flex-item-left:nth-child(1) {
+        height: 250px;
+    }
+}
