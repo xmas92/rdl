@@ -12,3 +12,4 @@ target
 # Local History for Visual Studio Code
 .history/
 rdl-lib/Cargo.lock
+Cargo.lock
