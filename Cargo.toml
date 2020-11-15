@@ -2,4 +2,5 @@
 members = [
     "rdl",
     "rdl-lib",
+    "rdl-web-demo"
 ]
