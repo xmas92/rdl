@@ -1,4 +1,5 @@
 [![MIT License](https://img.shields.io/github/license/xmas92/rdl)](https://github.com/xmas92/rdl/blob/master/LICENSE)
+![Build and Test](https://github.com/xmas92/rdl/workflows/Build%20and%20Test/badge.svg)
 
 
 <br />
