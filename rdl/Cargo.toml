@@ -1,5 +1,5 @@
 [package]
-name = "rdl-parse"
+name = "rdl"
 version = "0.1.0"
 authors = ["Axel Boldt-Christmas <xmas1915@gmail.com>"]
 edition = "2018"
@@ -7,9 +7,10 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-log = "*"
-peg = "*"
-im = "*"
-#rug = "*"
-num = "*"
-lazy_static = "*"
+rdl-lib = { path = "../rdl-lib" }
+criterion = "*"
+derive_more  = "*"
+
+[[bench]]
+name = "number_benchmarks"
+harness = false

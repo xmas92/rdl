@@ -1,4 +1,4 @@
-use rdl_parse::{grammar::*, runtime::Context};
+use rdl_lib::{grammar::*, runtime::Context};
 use std::io;
 use std::io::Write;
 
