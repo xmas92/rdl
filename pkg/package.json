@@ -1,0 +1,16 @@
+{
+  "name": "rdl-web-demo",
+  "collaborators": [
+    "Axel Boldt-Christmas <xmas1915@gmail.com>"
+  ],
+  "version": "0.1.0",
+  "license": "MIT",
+  "files": [
+    "rdl_web_demo_bg.wasm",
+    "rdl_web_demo.js",
+    "rdl_web_demo.d.ts"
+  ],
+  "module": "rdl_web_demo.js",
+  "types": "rdl_web_demo.d.ts",
+  "sideEffects": false
+}
