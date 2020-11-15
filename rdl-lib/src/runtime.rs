@@ -10,7 +10,6 @@ use std::cmp::{Eq, PartialEq};
 use std::error::Error;
 use std::fmt::{self, Alignment};
 use std::hash::Hash;
-use std::mem;
 use std::result::Result;
 use std::sync::{Arc, RwLock};
 use std::{any::Any, fmt::Display};
@@ -34,12 +33,16 @@ impl Display for ContextLookupError {
 }
 
 pub type RuntimeResult = Result<RuntimeValue, RuntimeError>;
-
-impl Context {
-    pub fn new() -> Context {
+impl Default for Context {
+    fn default() -> Self {
         Context {
             context: HashMap::new(),
         }
+    }
+}
+impl Context {
+    pub fn new() -> Context {
+        Context::default()
     }
     pub fn new_macro() -> Context {
         Context {
@@ -97,29 +100,29 @@ impl Context {
             },
         }
     }
-    pub fn get(&self, symbol: &String) -> RuntimeResult {
+    pub fn get(&self, symbol: &str) -> RuntimeResult {
         if let Some(value) = self.context.get(symbol) {
             return Ok(value.clone());
         }
         Context::get_global(symbol)
     }
-    pub fn get_global(symbol: &String) -> RuntimeResult {
+    pub fn get_global(symbol: &str) -> RuntimeResult {
         // TODO: Handle panic. Possible?
         let read_guard = CONTEXT.read().unwrap();
         if let Some(value) = read_guard.context.get(symbol) {
             return Ok(value.clone());
         }
         Err(RuntimeError::new(ContextLookupError {
-            symbol: symbol.clone(),
+            symbol: symbol.into(),
         }))
     }
-    pub fn set(&mut self, symbol: &String, value: RuntimeValue) {
-        self.context.insert(symbol.clone(), value);
+    pub fn set(&mut self, symbol: &str, value: RuntimeValue) {
+        self.context.insert(symbol.into(), value);
     }
-    pub fn set_global(symbol: &String, value: RuntimeValue) {
+    pub fn set_global(symbol: &str, value: RuntimeValue) {
         // TODO: Handle panic. Possible?
         let mut write_guard = CONTEXT.write().unwrap();
-        write_guard.context.insert(symbol.clone(), value);
+        write_guard.context.insert(symbol.into(), value);
     }
     pub fn debug_print_global() {
         println!("Context: {:?}", CONTEXT.read().unwrap());
@@ -418,35 +421,37 @@ impl PartialEq for RuntimeValue {
             (RuntimeValue::Unquote(l1), RuntimeValue::Unquote(l2)) => l1 == l2,
             (RuntimeValue::Form(a1), RuntimeValue::Form(a2)) => a1 == a2,
             (RuntimeValue::Reference(r1), RuntimeValue::Reference(r2)) => {
-                Arc::as_ptr(r1) == Arc::as_ptr(r2)
+                // FIXME apparently not correct, check https://rust-lang.github.io/rust-clippy/master/index.html#vtable_address_comparisons
+                Arc::ptr_eq(r1, r2)
             }
             (RuntimeValue::Function(r1), RuntimeValue::Function(r2)) => {
-                Arc::as_ptr(r1) == Arc::as_ptr(r2)
+                // FIXME apparently not correct, check https://rust-lang.github.io/rust-clippy/master/index.html#vtable_address_comparisons
+                Arc::ptr_eq(r1, r2)
             }
             (RuntimeValue::Evaluation(r1), RuntimeValue::Evaluation(r2)) => {
-                Arc::as_ptr(r1) == Arc::as_ptr(r2)
+                // FIXME apparently not correct, check https://rust-lang.github.io/rust-clippy/master/index.html#vtable_address_comparisons
+                Arc::ptr_eq(r1, r2)
             }
             (RuntimeValue::ContextLookup(r1), RuntimeValue::ContextLookup(r2)) => {
-                Arc::as_ptr(r1) == Arc::as_ptr(r2)
+                // FIXME apparently not correct, check https://rust-lang.github.io/rust-clippy/master/index.html#vtable_address_comparisons
+                Arc::ptr_eq(r1, r2)
             }
             (RuntimeValue::Macro(r1), RuntimeValue::Macro(r2)) => {
-                Arc::as_ptr(r1) == Arc::as_ptr(r2)
+                // FIXME apparently not correct, check https://rust-lang.github.io/rust-clippy/master/index.html#vtable_address_comparisons
+                Arc::ptr_eq(r1, r2)
             }
             (RuntimeValue::Vector(v), RuntimeValue::List(l))
             | (RuntimeValue::List(l), RuntimeValue::Vector(v)) => {
                 v.len() == l.len() && v.iter().zip(l.iter()).all(|(e1, e2)| *e1 == e2)
             }
             (RuntimeValue::Iterator(r1), RuntimeValue::Iterator(r2)) => {
-                // TODO: Iterators should be sequenced and then checked for equality. Iters should rarely be used as keys in hashmaps
-                Arc::as_ptr(r1) == Arc::as_ptr(r2)
+                // FIXME apparently not correct (should compare as list anyway), check https://rust-lang.github.io/rust-clippy/master/index.html#vtable_address_comparisons
+                // TODO: Iterators should be sequenced and then checked for equality. Iters should not be used as keys in hashmaps
+                Arc::ptr_eq(r1, r2)
             }
 
             (_, _) => false,
         }
-    }
-
-    fn ne(&self, other: &Self) -> bool {
-        !self.eq(other)
     }
 }
 impl Eq for RuntimeValue {}
@@ -461,7 +466,7 @@ impl Hash for RuntimeValue {
             }
             RuntimeValue::Integer(n) => n.hash(state),
             RuntimeValue::BigInteger(n) => n.hash(state),
-            RuntimeValue::Float(f) => unsafe { mem::transmute::<f64, u64>(*f).hash(state) },
+            RuntimeValue::Float(f) => (*f).to_bits().hash(state),
             RuntimeValue::BigFloat(f) => f.hash(state),
             RuntimeValue::String(s) => s.hash(state),
             RuntimeValue::Character(c) => c.hash(state),

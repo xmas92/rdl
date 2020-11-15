@@ -634,7 +634,7 @@ impl Compile for MacroForm {
                 let ev = RuntimeValue::Macro(Arc::new(move |context, args| {
                     let mut context = context;
                     match (args.len(), bf.len()) {
-                        (a, b) if a < b => {
+                        (num_args, num_bindings) if num_args < num_bindings => {
                             let s_debug = s_debug.clone();
                             RuntimeValue::Evaluation(Arc::new(move |_| {
                                 Err(RuntimeError::new(ArityError::new(
@@ -643,7 +643,7 @@ impl Compile for MacroForm {
                                 )))
                             }))
                         }
-                        (a, b) => {
+                        (num_args, num_bindings) => {
                             for (bf, arg) in bf.iter().zip(&args) {
                                 if let Err(e) = bf.bind_context(&mut context, arg.clone()) {
                                     return RuntimeValue::Evaluation(Arc::new(move |_| {
@@ -654,9 +654,9 @@ impl Compile for MacroForm {
                             if let Some(bfm) = bfm.as_ref() {
                                 if let Err(e) = bfm.bind_context(
                                     &mut context,
-                                    if b < a {
+                                    if num_bindings < num_args {
                                         RuntimeValue::Vector(Box::new(
-                                            args.into_iter().skip(b).collect(),
+                                            args.into_iter().skip(num_bindings).collect(),
                                         ))
                                     } else {
                                         RuntimeValue::None
@@ -929,7 +929,7 @@ impl Compile for SpecialForm {
                 }));
                 if let (Some(value), Some(arity)) = (variadic, variadic_arity) {
                     f = f.into_iter().filter(|(k, _)| *k < arity).collect();
-                    f.entry(arity - 1).or_insert(value.clone());
+                    f.entry(arity - 1).or_insert_with(|| value.clone());
                     f.insert(arity, value);
                 }
                 RuntimeValue::Function(Arc::new_cyclic(

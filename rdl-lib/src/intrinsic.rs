@@ -1389,11 +1389,10 @@ intrinsic_function!(
             }
             (RuntimeValue::Iterator(_), RuntimeValue::Integer(n)) => {
                 let n = *n;
-                if n < 0 {
-                    Err(RuntimeError::new(GeneralError::new(format!("Negative index{:?}", n))))
-                } else if n == 0 {
-                    Ok(collection.clone())
-                } else {
+                match n {
+                    n if n < 0 => Err(RuntimeError::new(GeneralError::new(format!("Negative index{:?}", n)))),
+                    n if n == 0 => Ok(collection.clone()),
+                    n =>
                     match collection.evaluate_global_context_with_args(vector![(n-1).into()])? {
                         RuntimeValue::Vector(mut v) if v.len() == 3 => {
                             match v.remove(1) {
@@ -1403,7 +1402,6 @@ intrinsic_function!(
                         }
                         _ => unreachable!(),
                     }
-
                 }
             }
             (RuntimeValue::Vector(_)|RuntimeValue::List(_)|RuntimeValue::String(_)|RuntimeValue::Map(_)|RuntimeValue::Set(_)|RuntimeValue::Iterator(_),_) => {
@@ -1459,16 +1457,14 @@ intrinsic_function!(
             }
             (RuntimeValue::Iterator(_), RuntimeValue::Integer(n)) => {
                 let n = *n;
-                if n < 0 {
-                    Err(RuntimeError::new(GeneralError::new(format!("Negative index{:?}", n))))
-                } else if n == 0 {
-                    Ok(collection.clone())
-                } else {
+                match n {
+                    n if n < 0 => Err(RuntimeError::new(GeneralError::new(format!("Negative index{:?}", n)))),
+                    n if n == 0 =>  Ok(collection.clone()),
+                    n =>
                     match collection.evaluate_global_context_with_args(vector![(n-1).into()])? {
                         RuntimeValue::Vector(mut v) if v.len() == 3 => Ok(v.remove(1)),
                         _ => unreachable!(),
-                    }
-
+                    },
                 }
             }
             (RuntimeValue::Vector(_)|RuntimeValue::List(_)|RuntimeValue::String(_)|RuntimeValue::Map(_)|RuntimeValue::Set(_)|RuntimeValue::Iterator(_),_) => {
