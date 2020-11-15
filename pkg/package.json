@@ -4,7 +4,7 @@
     "Axel Boldt-Christmas <xmas1915@gmail.com>"
   ],
   "version": "0.1.0",
-  "license": "MIT",
+  "license": "SEE LICENSE IN ../LICENSE",
   "files": [
     "rdl_web_demo_bg.wasm",
     "rdl_web_demo.js",
