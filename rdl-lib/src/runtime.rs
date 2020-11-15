@@ -4,8 +4,9 @@ use crate::{
     intrinsic,
     list::List,
 };
+use bigdecimal::BigDecimal;
 use im::{hashmap, HashMap, HashSet, Vector};
-use num::{BigInt, BigRational};
+use num::{rational::Ratio, BigInt};
 use std::cmp::{Eq, PartialEq};
 use std::error::Error;
 use std::fmt::{self, Alignment};
@@ -16,7 +17,7 @@ use std::{any::Any, fmt::Display};
 
 #[derive(Debug, Clone)]
 pub struct Context {
-    context: HashMap<String, RuntimeValue>,
+    pub context: HashMap<String, RuntimeValue>,
 }
 
 #[derive(Debug, Clone)]
@@ -125,10 +126,10 @@ impl Context {
         write_guard.context.insert(symbol.into(), value);
     }
     pub fn debug_print_global() {
-        println!("Context: {:?}", CONTEXT.read().unwrap());
+        log::info!("Context: {:?}", CONTEXT.read().unwrap());
     }
     pub fn debug_print_global_complement(other: &Context) {
-        println!(
+        log::info!(
             "Context: {:?}",
             CONTEXT
                 .read()
@@ -141,6 +142,10 @@ impl Context {
     pub fn get_global_context() -> Context {
         CONTEXT.read().unwrap().as_ref().clone()
     }
+    pub fn set_global_context(new_context: Context) {
+        let mut write_guard = CONTEXT.write().unwrap();
+        *write_guard.as_mut() = new_context;
+    }
 }
 
 lazy_static! {
@@ -151,11 +156,11 @@ lazy_static! {
 #[derive(Clone)]
 pub enum RuntimeValue {
     None,
-    Ratio(i64, i64),
+    Ratio(Ratio<i64>),
     Integer(i64),
     BigInteger(Box<BigInt>),
     Float(f64),
-    BigFloat(Box<BigRational>),
+    BigFloat(Box<BigDecimal>),
     String(Box<String>),
     Character(char),
     Boolean(bool),
@@ -282,7 +287,7 @@ impl RuntimeValue {
         // To get a list you need to do (defmacro m ((quote list) a b c)) not (defmacro m '(a b c))
         match self {
             RuntimeValue::None => Ok(String::from("nil")),
-            RuntimeValue::Ratio(_, _) => todo!(),
+            RuntimeValue::Ratio(r) => Ok(format!("{}/{}", r.numer(), r.denom())),
             RuntimeValue::Integer(n) => Ok(n.to_string()),
             RuntimeValue::BigInteger(_) => todo!(),
             RuntimeValue::Float(n) => Ok(n.to_string()),
@@ -375,7 +380,7 @@ impl fmt::Debug for RuntimeValue {
 
         match &self {
             RuntimeValue::None => f.write_str("nil"),
-            RuntimeValue::Ratio(n, d) => f.write_fmt(format_args!("{}/{}", n, d)),
+            RuntimeValue::Ratio(r) => f.write_fmt(format_args!("{}/{}", r.numer(), r.denom())),
             RuntimeValue::Integer(n) => f.write_fmt(format_args!("{}", n)),
             RuntimeValue::BigInteger(n) => f.write_fmt(format_args!("{}", n)),
             RuntimeValue::Float(n) => f.write_fmt(format_args!("{}", n)),
@@ -391,11 +396,15 @@ impl fmt::Debug for RuntimeValue {
             RuntimeValue::Unquote(l) => f.write_fmt(format_args!("@({:?})", l)),
             RuntimeValue::Form(a) => f.write_fmt(format_args!("{:?}", a)),
             RuntimeValue::Reference(r) => f.write_fmt(format_args!("Ref{:?}", r.type_id())),
-            RuntimeValue::Function(r) => f.write_fmt(format_args!("FN{:?}", Arc::as_ptr(r))),
-            RuntimeValue::Evaluation(r) => f.write_fmt(format_args!("EV{:?}", Arc::as_ptr(r))),
-            RuntimeValue::ContextLookup(r) => f.write_fmt(format_args!("LU{:?}", Arc::as_ptr(r))),
-            RuntimeValue::Macro(r) => f.write_fmt(format_args!("MC{:?}", Arc::as_ptr(r))),
-            RuntimeValue::Iterator(r) => f.write_fmt(format_args!("IT{:?}", Arc::as_ptr(r))),
+            RuntimeValue::Function(r) => f.write_fmt(format_args!("Function{:?}", Arc::as_ptr(r))),
+            RuntimeValue::Evaluation(r) => {
+                f.write_fmt(format_args!("Evaluation{:?}", Arc::as_ptr(r)))
+            }
+            RuntimeValue::ContextLookup(r) => {
+                f.write_fmt(format_args!("ContextLookup{:?}", Arc::as_ptr(r)))
+            }
+            RuntimeValue::Macro(r) => f.write_fmt(format_args!("Macro{:?}", Arc::as_ptr(r))),
+            RuntimeValue::Iterator(r) => f.write_fmt(format_args!("Iterator{:?}", Arc::as_ptr(r))),
         }
     }
 }
@@ -405,7 +414,7 @@ impl PartialEq for RuntimeValue {
         // hash check optimization if we ever cache hash values.
         match (&self, &other) {
             (RuntimeValue::None, RuntimeValue::None) => true,
-            (RuntimeValue::Ratio(_, _), RuntimeValue::Ratio(_, _)) => todo!(),
+            (RuntimeValue::Ratio(r1), RuntimeValue::Ratio(r2)) => r1 == r2,
             (RuntimeValue::Integer(i1), RuntimeValue::Integer(i2)) => i1 == i2,
             (RuntimeValue::BigInteger(i1), RuntimeValue::BigInteger(i2)) => i1 == i2,
             (RuntimeValue::Float(f1), RuntimeValue::Float(f2)) => f1 == f2,
@@ -460,10 +469,7 @@ impl Hash for RuntimeValue {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         match &self {
             RuntimeValue::None => {}
-            RuntimeValue::Ratio(n, d) => {
-                n.hash(state);
-                d.hash(state);
-            }
+            RuntimeValue::Ratio(r) => r.hash(state),
             RuntimeValue::Integer(n) => n.hash(state),
             RuntimeValue::BigInteger(n) => n.hash(state),
             RuntimeValue::Float(f) => (*f).to_bits().hash(state),
@@ -505,8 +511,8 @@ impl From<f64> for RuntimeValue {
         RuntimeValue::Float(n)
     }
 }
-impl From<BigRational> for RuntimeValue {
-    fn from(n: BigRational) -> Self {
+impl From<BigDecimal> for RuntimeValue {
+    fn from(n: BigDecimal) -> Self {
         RuntimeValue::BigFloat(Box::new(n))
     }
 }
@@ -665,6 +671,8 @@ impl IntoIterator for RuntimeValue {
 
 #[cfg(test)]
 mod tests {
+    use std::convert::TryFrom;
+
     use super::*;
 
     #[test]
@@ -691,7 +699,7 @@ mod tests {
             RuntimeValue::Integer(0),
             RuntimeValue::BigInteger(Box::new(BigInt::from(0))),
             RuntimeValue::Float(0.5),
-            RuntimeValue::BigFloat(Box::new(BigRational::from_float(0.5).unwrap())),
+            RuntimeValue::BigFloat(Box::new(BigDecimal::try_from(0.5).unwrap())),
             RuntimeValue::String(Box::new(String::from("string"))),
             RuntimeValue::Character('c'),
             RuntimeValue::Boolean(true),

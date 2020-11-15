@@ -7,8 +7,8 @@ fn test_ast() -> io::Result<()> {
 
     compile("(defmacro defn [name & body] '((quote def) name (cons (quote fn) (cons name body))))")
         .unwrap();
-    compile("(defmacro -> [x & forms] (loop [x x forms forms] (if forms (let [form (first forms) threaded (if (seq? form) '((first form) x @(next form)) '(form x))] (recur threaded (next forms))) x)))").unwrap();
-    compile("(defmacro ->> [x & forms] (loop [x x forms forms] (if forms (let [form (first forms) threaded (if (seq? form) '((first form) @(next form) x) '(form x))] (recur threaded (next forms))) x)))").unwrap();
+    compile("(defmacro -> [x & forms] (loop [x x forms forms] (if forms (let [form (first forms) threaded (if (seq? form) '((first form) x @(rest form)) '(form x))] (recur threaded (next forms))) x)))").unwrap();
+    compile("(defmacro ->> [x & forms] (loop [x x forms forms] (if forms (let [form (first forms) threaded (if (seq? form) '((first form) @(rest form) x) '(form x))] (recur threaded (next forms))) x)))").unwrap();
     compile("(defmacro as-> [expr name & forms] '((quote let) [name expr @(sequence (interleave (repeat name) (butlast forms)))] (if forms (last forms) name)))").unwrap();
     loop {
         // (def a (-> 5 repeat (->> (take 5)) (as-> n (interleave n n)))

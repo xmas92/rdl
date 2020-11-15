@@ -2607,8 +2607,8 @@ intrinsic_function!(
                 } else if ret.len() != num as usize {
                     Ok(vector![ret.into(), iter::internal0()?].into())
                 } else {
-                    let it = it.clone();
-                    {}
+                    let mut it = it.clone();
+                    it.advance_by(num as usize).expect("Unreachable");
                     Ok(vector![ret.into(), chunk::internal2(&size,&it.0)?].into())
                 }
             },
@@ -2623,6 +2623,7 @@ intrinsic_function!(
                         } else if ret.len() != num as usize {
                             Ok(vector![ret.into(), iter::internal0()?, (n+1).into()].into())
                         }else {
+                            it.advance_by(num as usize).expect("Unreachable");
                             Ok(vector![ret.into(), chunk::internal2(&size,&it.0)?, (n+1).into()].into())
                         }
                     },

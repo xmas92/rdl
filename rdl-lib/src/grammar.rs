@@ -1,5 +1,6 @@
+use bigdecimal::BigDecimal;
 use im::Vector;
-use num::BigInt;
+use num::{rational::Ratio, BigInt};
 use peg::parser;
 use std::{
     char::from_u32,
@@ -130,7 +131,7 @@ impl CompiledBindingForm {
                 if let Some(bf) = rest.as_ref() {
                     bf.bind_context(
                         context,
-                        intrinsic::nthrest::internal2(
+                        intrinsic::nthnext::internal2(
                             &value,
                             &RuntimeValue::Integer(bv.len() as i64),
                         )?,
@@ -433,7 +434,7 @@ impl Unparse for Number {
                     s.to_string()
                 }
             }
-            Number::Ratio(_, _) => todo!(),
+            Number::Ratio(n, d) => format!("{}/{}", n, d),
         }
     }
 }
@@ -667,14 +668,17 @@ impl Compile for MacroForm {
                                     }));
                                 }
                             }
-                            println!("{:?}", context);
+                            log::info!("Instantiation macro in context: {:?}", context);
                             //(defmacro -> [x & forms] (loop [x x forms forms] (if forms (let [form (first forms) threaded (if (seq? form) '((first form) x @(next form)) '(form x))] (recur threaded (next forms))) x))) (-> 1 (+ 2) (+ 3 (+ 2 4)))
                             match f.evaluate(context) {
                                 Ok(f) => {
-                                    println!("{:?}", f);
+                                    log::info!("Macro result: {:?}", f);
                                     match f.decompile() {
                                         Ok(s) => {
-                                            println!("{:?}", s);
+                                            log::info!(
+                                                "Macro instantiation decompile into: {:?}",
+                                                s
+                                            );
                                             rdl::program(&s.as_str())
                                                 .unwrap()
                                                 .first()
@@ -762,12 +766,16 @@ impl Compile for Number {
             }
             Number::Float(n, m) => {
                 if *m {
-                    todo!()
+                    RuntimeValue::BigFloat(Box::new(
+                        BigDecimal::parse_bytes(n.as_bytes(), 10).unwrap(),
+                    ))
                 } else {
                     RuntimeValue::Float(n.parse().unwrap())
                 }
             }
-            Number::Ratio(_, _) => todo!(),
+            Number::Ratio(n, d) => {
+                RuntimeValue::Ratio(Ratio::new(n.parse().unwrap(), d.parse().unwrap()))
+            }
         }
     }
 
@@ -901,19 +909,19 @@ impl Compile for SpecialForm {
                 let report_arity = |(x, c)|
                     // TODO Add Logging
                     if variadic_arity.is_some() && variadic_arity.le(&x) {
-                        println!(
+                        log::warn!(
                             "Warning multiple({}) definitions with arity {} overwritten by variadic function with arity {}",
                             c,
                             x.unwrap(),
                             variadic_arity.unwrap())
                     } else if c > 1 {
-                        println!(
+                        log::warn!(
                             "Warning multiple({}) definitions with arity {}  found in function. Choice undefined",
                             c,
                             x.unwrap())
                     };
                 if variadic_count > 1 {
-                    println!(
+                    log::warn!(
                         "Warning multiple({}) variadic definitions found in function. One with smallest({}) arity chosen.",
                         variadic_count,
                         variadic_arity.unwrap());
@@ -932,116 +940,130 @@ impl Compile for SpecialForm {
                     f.entry(arity - 1).or_insert_with(|| value.clone());
                     f.insert(arity, value);
                 }
-                RuntimeValue::Function(Arc::new_cyclic(
-                    |self_: &Weak<
-                        Box<dyn Fn(Context, Vector<RuntimeValue>) -> RuntimeResult + Send + Sync>,
-                    >| {
-                        let self_ = self_.clone();
-                        Box::new(move |context: Context, args: Vector<RuntimeValue>| {
+                RuntimeValue::Evaluation(Arc::new(move |closure_context| {
+                    let f = f.clone();
+                    let s = s.clone();
+                    Ok(RuntimeValue::Function(Arc::new_cyclic(
+                        |self_: &Weak<
+                            Box<
+                                dyn Fn(Context, Vector<RuntimeValue>) -> RuntimeResult
+                                    + Send
+                                    + Sync,
+                            >,
+                        >| {
                             let self_ = self_.clone();
-                            let f = f.clone();
-                            let mut context = context;
-                            if let Some(s) = s.clone() {
-                                context.set(
-                                    &s,
-                                    RuntimeValue::Function(Arc::new(Box::new(
-                                        move |context, args| {
-                                            let self_ = self_.clone();
-                                            (self_.upgrade().unwrap())(context, args)
-                                        },
-                                    ))),
-                                )
-                            }
-                            let mut args = args;
-                            let mut recursion = false;
-                            loop {
-                                let ret = {
-                                    let mut context = context.clone();
-                                    if let Some((bf, var, values)) = f.get(&args.len()) {
-                                        // args.len()-1 <= bf.len() <= args.len()
-                                        for (bf, arg) in bf.iter().zip(&args) {
-                                            bf.bind_context(&mut context, arg.clone())?;
-                                        }
-                                        if let Some(var) = var {
-                                            var.bind_context(
-                                                &mut context,
-                                                if bf.len() < args.len() {
-                                                    match args.last().unwrap() {
-                                                        // if we recur and the last argument is a vector or nil we assume it is updating the input argument
-                                                        // FIXME need to define precis mechanism for recur and variadic function.
-                                                        r @ RuntimeValue::Vector(_)
-                                                        | r @ RuntimeValue::None
-                                                            if recursion =>
-                                                        {
-                                                            r.clone()
-                                                        }
-                                                        r => RuntimeValue::Vector(Box::new(
-                                                            Vector::unit(r.clone()),
-                                                        )),
-                                                    }
-                                                } else {
-                                                    RuntimeValue::None
-                                                },
-                                            )?;
-                                        }
-                                        match values.len() {
-                                            0 => Ok(RuntimeValue::None),
-                                            n => {
-                                                let res: Result<Vec<_>, _> = values
-                                                    .iter()
-                                                    .take(n - 1)
-                                                    .map(|f| f.evaluate(context.clone()))
-                                                    .collect();
-                                                res?;
-                                                values[n - 1].evaluate(context.clone())
+                            Box::new(move |context: Context, args: Vector<RuntimeValue>| {
+                                let self_ = self_.clone();
+                                let f = f.clone();
+                                let mut context = Context {
+                                    context: closure_context.context.clone().union(context.context),
+                                };
+                                if let Some(s) = s.clone() {
+                                    context.set(
+                                        &s,
+                                        RuntimeValue::Function(Arc::new(Box::new(
+                                            move |context, args| {
+                                                let self_ = self_.clone();
+                                                (self_.upgrade().unwrap())(context, args)
+                                            },
+                                        ))),
+                                    )
+                                }
+                                let mut args = args;
+                                let mut recursion = false;
+                                loop {
+                                    let ret = {
+                                        let mut context = context.clone();
+                                        if let Some((bf, var, values)) = f.get(&args.len()) {
+                                            // args.len()-1 <= bf.len() <= args.len()
+                                            for (bf, arg) in bf.iter().zip(&args) {
+                                                bf.bind_context(&mut context, arg.clone())?;
                                             }
-                                        }
-                                    } else {
-                                        match f.last_key_value() {
-                                            Some((_, (bf, Some(var), values)))
-                                                if args.len() > bf.len() =>
-                                            {
-                                                // bf.len() < args.len()
-                                                for (bf, arg) in bf.iter().zip(&args) {
-                                                    bf.bind_context(&mut context, arg.clone())?;
-                                                }
+                                            if let Some(var) = var {
                                                 var.bind_context(
                                                     &mut context,
-                                                    RuntimeValue::Vector(Box::new(
-                                                        args.into_iter().skip(bf.len()).collect(),
-                                                    )),
+                                                    if bf.len() < args.len() {
+                                                        match args.last().unwrap() {
+                                                            // if we recur and the last argument is a vector or nil we assume it is updating the input argument
+                                                            // FIXME need to define precis mechanism for recur and variadic function.
+                                                            r @ RuntimeValue::Vector(_)
+                                                            | r @ RuntimeValue::None
+                                                                if recursion =>
+                                                            {
+                                                                r.clone()
+                                                            }
+                                                            r => RuntimeValue::Vector(Box::new(
+                                                                Vector::unit(r.clone()),
+                                                            )),
+                                                        }
+                                                    } else {
+                                                        RuntimeValue::None
+                                                    },
                                                 )?;
-                                                match values.len() {
-                                                    0 => Ok(RuntimeValue::None),
-                                                    n => {
-                                                        let res: Result<Vec<_>, _> = values
-                                                            .iter()
-                                                            .take(n - 1)
-                                                            .map(|f| f.evaluate(context.clone()))
-                                                            .collect();
-                                                        res?;
-                                                        values[n - 1].evaluate(context.clone())
-                                                    }
+                                            }
+                                            match values.len() {
+                                                0 => Ok(RuntimeValue::None),
+                                                n => {
+                                                    let res: Result<Vec<_>, _> = values
+                                                        .iter()
+                                                        .take(n - 1)
+                                                        .map(|f| f.evaluate(context.clone()))
+                                                        .collect();
+                                                    res?;
+                                                    values[n - 1].evaluate(context.clone())
                                                 }
                                             }
-                                            _ => Err(RuntimeError::new(ArityError::new(
-                                                args.len(),
-                                                format!("Fn{:?}", s),
-                                            ))),
+                                        } else {
+                                            match f.last_key_value() {
+                                                Some((_, (bf, Some(var), values)))
+                                                    if args.len() > bf.len() =>
+                                                {
+                                                    // bf.len() < args.len()
+                                                    for (bf, arg) in bf.iter().zip(&args) {
+                                                        bf.bind_context(&mut context, arg.clone())?;
+                                                    }
+                                                    var.bind_context(
+                                                        &mut context,
+                                                        RuntimeValue::Vector(Box::new(
+                                                            args.into_iter()
+                                                                .skip(bf.len())
+                                                                .collect(),
+                                                        )),
+                                                    )?;
+                                                    match values.len() {
+                                                        0 => Ok(RuntimeValue::None),
+                                                        n => {
+                                                            let res: Result<Vec<_>, _> = values
+                                                                .iter()
+                                                                .take(n - 1)
+                                                                .map(|f| {
+                                                                    f.evaluate(context.clone())
+                                                                })
+                                                                .collect();
+                                                            res?;
+                                                            values[n - 1].evaluate(context.clone())
+                                                        }
+                                                    }
+                                                }
+                                                _ => Err(RuntimeError::new(ArityError::new(
+                                                    args.len(),
+                                                    format!("Fn{:?}", s),
+                                                ))),
+                                            }
                                         }
-                                    }
-                                };
-                                match ret {
-                                    Err(RuntimeError::Recur(recur_args)) => {
-                                        args = recur_args;
-                                        recursion = true;
-                                    }
-                                    ret => return ret,
-                                };
-                            }
-                        })
-                    },
-                ))
+                                    };
+                                    match ret {
+                                        Err(RuntimeError::Recur(recur_args)) => {
+                                            args = recur_args;
+                                            recursion = true;
+                                        }
+                                        ret => return ret,
+                                    };
+                                }
+                            })
+                        },
+                    )))
+                }))
             }
             SpecialForm::Loop(b, f) => {
                 let bindings: Vec<_> = b
