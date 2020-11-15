@@ -44,7 +44,7 @@ impl<E: Clone> List<E> {
 
     #[inline]
     pub fn cons<T: Borrow<Self>>(first: E, rest: T) -> Self {
-        let list: Self = rest.borrow().clone().into();
+        let list: Self = rest.borrow().clone();
         Self {
             size: list.size + 1,
             node: Arc::new(Node::Node(first, list.node)),
@@ -213,7 +213,6 @@ mod tests {
             List::cons(2, List::cons(3, List::cons(4, List::empty()))),
         );
         let list2: List<String> = list1
-            .clone()
             .into_iter()
             .filter(|&x| x > 3)
             .map(|x| x.to_string())

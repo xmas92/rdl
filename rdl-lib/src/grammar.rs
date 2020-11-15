@@ -69,13 +69,13 @@ impl BindingForm {
         match &self {
             BindingForm::Symbol(s) => CompiledBindingForm::Symbol(s.clone()),
             BindingForm::BindingVector(bf, rest, as_s) => CompiledBindingForm::BindingVector(
-                bf.into_iter().map(|bf| bf.compile()).collect(),
+                bf.iter().map(|bf| bf.compile()).collect(),
                 rest.clone().map(|bf| Box::new(bf.compile())),
                 as_s.clone(),
             ),
             BindingForm::BindingMap(keys, bf, as_s, default) => CompiledBindingForm::BindingMap(
                 keys.clone(),
-                bf.into_iter()
+                bf.iter()
                     .map(|(bf, f)| (bf.compile(), f.compile()))
                     .collect(),
                 as_s.clone(),
@@ -423,14 +423,14 @@ impl Unparse for Number {
                 if *b {
                     format!("{}M", s)
                 } else {
-                    format!("{}", s)
+                    s.to_string()
                 }
             }
             Number::Float(s, b) => {
                 if *b {
                     format!("{}M", s)
                 } else {
-                    format!("{}", s)
+                    s.to_string()
                 }
             }
             Number::Ratio(_, _) => todo!(),
@@ -458,7 +458,7 @@ impl Compile for Form {
                 }
             }
             Form::Form(f) | Form::Unquote(f) => {
-                if f.len() == 0 {
+                if f.is_empty() {
                     return RuntimeValue::None;
                 }
                 let first = if let Some(Form::Symbol(s)) = f.first() {
@@ -476,7 +476,7 @@ impl Compile for Form {
                 match first {
                     RuntimeValue::Macro(function) => {
                         let rest: Vector<RuntimeValue> =
-                            f.into_iter().skip(1).map(|f| f.macro_compile()).collect();
+                            f.iter().skip(1).map(|f| f.macro_compile()).collect();
                         if let Form::Form(_) = self {
                             (function)(Context::new(), rest)
                         } else {
@@ -490,20 +490,20 @@ impl Compile for Form {
                                     if let Ok(RuntimeValue::List(l)) =
                                         intrinsic::sequence::internal1(&v)
                                     {
-                                        RuntimeValue::Unquote(l.clone())
+                                        RuntimeValue::Unquote(l)
                                     } else {
                                         unreachable!()
                                     }
                                 }
-                                RuntimeValue::List(l) => RuntimeValue::Unquote(l.clone()),
-                                v @ RuntimeValue::Unquote(_) => v.clone(),
-                                v => RuntimeValue::Unquote(Box::new(List::unit(v.clone()))),
+                                RuntimeValue::List(l) => RuntimeValue::Unquote(l),
+                                v @ RuntimeValue::Unquote(_) => v,
+                                v => RuntimeValue::Unquote(Box::new(List::unit(v))),
                             }
                         }
                     }
                     _ => {
                         let rest: Vector<RuntimeValue> =
-                            f.into_iter().skip(1).map(|f| f.compile()).collect();
+                            f.iter().skip(1).map(|f| f.compile()).collect();
                         if let Form::Form(_) = self {
                             RuntimeValue::Evaluation(Arc::new(move |context: Context| {
                                 let mut it: list::Iter<RuntimeValue>;
@@ -522,7 +522,7 @@ impl Compile for Form {
                                     .map(|value| value.evaluate(context.clone()))
                                     .flat_map(|value| match value {
                                         Ok(RuntimeValue::Unquote(l)) => {
-                                            l.into_iter().map(|value| Ok(value)).collect()
+                                            l.into_iter().map(Ok).collect()
                                         }
                                         r @ Ok(_) => vec![r],
                                         e @ Err(_) => vec![e],
@@ -548,7 +548,7 @@ impl Compile for Form {
                                     .map(|value| value.evaluate(context.clone()))
                                     .flat_map(|value| match value {
                                         Ok(RuntimeValue::Unquote(l)) => {
-                                            l.into_iter().map(|value| Ok(value)).collect()
+                                            l.into_iter().map(Ok).collect()
                                         }
                                         r @ Ok(_) => vec![r],
                                         e @ Err(_) => vec![e],
@@ -593,13 +593,13 @@ impl Compile for Form {
             Form::Form(f) => {
                 // Reverse vector as list FromIterator builds the list last -> first
                 RuntimeValue::List(Box::new(
-                    f.into_iter().map(|f| f.macro_compile()).rev().collect(),
+                    f.iter().map(|f| f.macro_compile()).rev().collect(),
                 ))
             }
             Form::Unquote(f) => {
                 // Reverse vector as list FromIterator builds the list last -> first
                 RuntimeValue::Unquote(Box::new(
-                    f.into_iter().map(|f| f.macro_compile()).rev().collect(),
+                    f.iter().map(|f| f.macro_compile()).rev().collect(),
                 ))
             }
         }
@@ -627,19 +627,19 @@ impl Compile for MacroForm {
                 RuntimeValue::Form(Box::new(Form::Symbol(s.clone())))
             }
             MacroForm::Function(s, bf, bfm, f) => {
-                let bf: Vec<_> = bf.into_iter().map(|bf| bf.compile()).collect();
+                let bf: Vec<_> = bf.iter().map(|bf| bf.compile()).collect();
                 let bfm = bfm.as_ref().map(|bfm| bfm.compile());
                 let f = f.compile();
                 let s_debug = s.clone();
                 let ev = RuntimeValue::Macro(Arc::new(move |context, args| {
-                    let mut context = context.clone();
+                    let mut context = context;
                     match (args.len(), bf.len()) {
                         (a, b) if a < b => {
                             let s_debug = s_debug.clone();
                             RuntimeValue::Evaluation(Arc::new(move |_| {
                                 Err(RuntimeError::new(ArityError::new(
                                     args.len(),
-                                    String::from(format!("Macro{:?}", s_debug)),
+                                    format!("Macro{:?}", s_debug),
                                 )))
                             }))
                         }
@@ -710,24 +710,22 @@ impl Compile for Value {
             Value::Nil => RuntimeValue::None,
             Value::Number(n) => n.compile(),
             Value::QuoteString(s) => RuntimeValue::String(Box::new(s.clone())),
-            Value::Character(c) => RuntimeValue::Character(c.clone()),
-            Value::Boolean(b) => RuntimeValue::Boolean(b.clone()),
+            Value::Character(c) => RuntimeValue::Character(*c),
+            Value::Boolean(b) => RuntimeValue::Boolean(*b),
             Value::Keyword(k) => RuntimeValue::Keyword(Box::new(k.clone())),
             Value::List(l) => {
                 // Reverse vector as list FromIterator builds the list last -> first
-                RuntimeValue::List(Box::new(l.into_iter().map(|f| f.compile()).rev().collect()))
+                RuntimeValue::List(Box::new(l.iter().map(|f| f.compile()).rev().collect()))
             }
             Value::Vector(v) => {
-                RuntimeValue::Vector(Box::new(v.into_iter().map(|f| f.compile()).collect()))
+                RuntimeValue::Vector(Box::new(v.iter().map(|f| f.compile()).collect()))
             }
             Value::Map(m) => RuntimeValue::Map(Box::new(
-                m.into_iter()
+                m.iter()
                     .map(|(f1, f2)| (f1.compile(), f2.compile()))
                     .collect(),
             )),
-            Value::Set(s) => {
-                RuntimeValue::Set(Box::new(s.into_iter().map(|f| f.compile()).collect()))
-            }
+            Value::Set(s) => RuntimeValue::Set(Box::new(s.iter().map(|f| f.compile()).collect())),
         }
     }
 
@@ -735,15 +733,15 @@ impl Compile for Value {
         match self {
             Value::List(_) => RuntimeValue::Form(Box::new(Form::Value(self.clone()))),
             Value::Vector(v) => {
-                RuntimeValue::Vector(Box::new(v.into_iter().map(|f| f.macro_compile()).collect()))
+                RuntimeValue::Vector(Box::new(v.iter().map(|f| f.macro_compile()).collect()))
             }
             Value::Map(m) => RuntimeValue::Map(Box::new(
-                m.into_iter()
+                m.iter()
                     .map(|(f1, f2)| (f1.compile(), f2.macro_compile()))
                     .collect(),
             )),
             Value::Set(s) => {
-                RuntimeValue::Set(Box::new(s.into_iter().map(|f| f.macro_compile()).collect()))
+                RuntimeValue::Set(Box::new(s.iter().map(|f| f.macro_compile()).collect()))
             }
             _ => self.compile(),
         }
@@ -788,7 +786,7 @@ impl Compile for SpecialForm {
                 };
                 let s = s.clone();
                 RuntimeValue::Evaluation(Arc::new(move |context: Context| {
-                    let v = v.evaluate(context.clone())?;
+                    let v = v.evaluate(context)?;
                     Context::set_global(&s, v);
                     Ok(RuntimeValue::Form(Box::new(Form::Symbol(s.clone()))))
                 }))
@@ -803,15 +801,13 @@ impl Compile for SpecialForm {
                 RuntimeValue::Evaluation(Arc::new(move |context: Context| {
                     let b = b.evaluate(context.clone())?;
                     match b {
-                        RuntimeValue::None | RuntimeValue::Boolean(false) => {
-                            f.evaluate(context.clone())
-                        }
-                        _ => t.evaluate(context.clone()),
+                        RuntimeValue::None | RuntimeValue::Boolean(false) => f.evaluate(context),
+                        _ => t.evaluate(context),
                     }
                 }))
             }
             SpecialForm::Do(f) => {
-                let values: Vec<_> = f.into_iter().map(|f| f.compile()).collect();
+                let values: Vec<_> = f.iter().map(|f| f.compile()).collect();
                 RuntimeValue::Evaluation(Arc::new(move |context: Context| match values.len() {
                     0 => Ok(RuntimeValue::None),
                     n => {
@@ -821,18 +817,18 @@ impl Compile for SpecialForm {
                             .map(|f| f.evaluate(context.clone()))
                             .collect();
                         res?;
-                        values[n - 1].evaluate(context.clone())
+                        values[n - 1].evaluate(context)
                     }
                 }))
             }
             SpecialForm::Let(b, f) => {
                 let bindings: Vec<_> = b
-                    .into_iter()
+                    .iter()
                     .map(|(bf, f)| (bf.compile(), f.compile()))
                     .collect();
-                let values: Vec<_> = f.into_iter().map(|f| f.compile()).collect();
+                let values: Vec<_> = f.iter().map(|f| f.compile()).collect();
                 RuntimeValue::Evaluation(Arc::new(move |context: Context| {
-                    let mut context = context.clone();
+                    let mut context = context;
                     for (bf, f) in bindings.clone() {
                         let f = f.evaluate(context.clone())?;
                         bf.bind_context(&mut context, f)?;
@@ -846,7 +842,7 @@ impl Compile for SpecialForm {
                                 .map(|f| f.evaluate(context.clone()))
                                 .collect();
                             res?;
-                            values[n - 1].evaluate(context.clone())
+                            values[n - 1].evaluate(context)
                         }
                     }
                 }))
@@ -856,7 +852,7 @@ impl Compile for SpecialForm {
                 let s = s.clone();
                 RuntimeValue::Evaluation(Arc::new(move |context: Context| {
                     let s = s.clone();
-                    if let Ok(_) = context.get(&s) {
+                    if context.get(&s).is_ok() {
                         Ok(RuntimeValue::Form(Box::new(Form::Symbol(s))))
                     } else {
                         Err(RuntimeError::new(GeneralError::new(format!(
@@ -872,7 +868,7 @@ impl Compile for SpecialForm {
                 let mut variadic_arity: Option<usize> = None;
                 let mut variadic_count: usize = 0;
                 let (mut arity, mut f): (Vec<usize>, BTreeMap<_, (Vec<_>, _, Vec<_>)>) = f
-                    .into_iter()
+                    .iter()
                     .inspect(|(bf, var, f)| {
                         if let (count, Some(_)) = (bf.len(), var) {
                             variadic_arity = variadic_arity
@@ -922,7 +918,7 @@ impl Compile for SpecialForm {
                         variadic_count,
                         variadic_arity.unwrap());
                 }
-                arity.sort();
+                arity.sort_unstable();
                 (report_arity)(arity.into_iter().fold((None, 0), |acc, x| match acc {
                     (None, _) => (Some(x), 1),
                     (Some(y), c) if x == y => (Some(y), c + 1),
@@ -933,9 +929,7 @@ impl Compile for SpecialForm {
                 }));
                 if let (Some(value), Some(arity)) = (variadic, variadic_arity) {
                     f = f.into_iter().filter(|(k, _)| *k < arity).collect();
-                    if !f.contains_key(&(arity - 1)) {
-                        f.insert(arity - 1, value.clone());
-                    }
+                    f.entry(arity - 1).or_insert(value.clone());
                     f.insert(arity, value);
                 }
                 RuntimeValue::Function(Arc::new_cyclic(
@@ -946,7 +940,7 @@ impl Compile for SpecialForm {
                         Box::new(move |context: Context, args: Vector<RuntimeValue>| {
                             let self_ = self_.clone();
                             let f = f.clone();
-                            let mut context = context.clone();
+                            let mut context = context;
                             if let Some(s) = s.clone() {
                                 context.set(
                                     &s,
@@ -1032,7 +1026,7 @@ impl Compile for SpecialForm {
                                             }
                                             _ => Err(RuntimeError::new(ArityError::new(
                                                 args.len(),
-                                                String::from(format!("Fn{:?}", s)),
+                                                format!("Fn{:?}", s),
                                             ))),
                                         }
                                     }
@@ -1051,12 +1045,12 @@ impl Compile for SpecialForm {
             }
             SpecialForm::Loop(b, f) => {
                 let bindings: Vec<_> = b
-                    .into_iter()
+                    .iter()
                     .map(|(bf, f)| (bf.compile(), f.compile()))
                     .collect();
-                let values: Vec<_> = f.into_iter().map(|f| f.compile()).collect();
+                let values: Vec<_> = f.iter().map(|f| f.compile()).collect();
                 RuntimeValue::Evaluation(Arc::new(move |context: Context| {
-                    let mut context = context.clone();
+                    let mut context = context;
                     let mut bindings = bindings.clone();
                     loop {
                         let ret = {
@@ -1089,7 +1083,7 @@ impl Compile for SpecialForm {
                 }))
             }
             SpecialForm::Recur(f) => {
-                let values: Vec<_> = f.into_iter().map(|f| f.compile()).collect();
+                let values: Vec<_> = f.iter().map(|f| f.compile()).collect();
                 RuntimeValue::Evaluation(Arc::new(move |context: Context| {
                     let res: Result<Vector<_>, _> =
                         values.iter().map(|f| f.evaluate(context.clone())).collect();
@@ -1208,30 +1202,30 @@ pub grammar rdl() for str {
         = s:$(['+' | '-']) { s.to_string() }
 
     rule exponent() -> String
-        = "e" s:sign()? n:$(['0'..='9']+) { format!("e{}{}", s.unwrap_or(String::new()), n) }
-        / "E" s:sign()? n:$(['0'..='9']+) { format!("e{}{}", s.unwrap_or(String::new()), n) }
+        = "e" s:sign()? n:$(['0'..='9']+) { format!("e{}{}", s.unwrap_or_default(), n) }
+        / "E" s:sign()? n:$(['0'..='9']+) { format!("e{}{}", s.unwrap_or_default(), n) }
 
     rule float_inner() -> String
         = "inf" { "inf".to_string() }
         / "NaN" { "NaN".to_string() }
-        / n:$(['0'..='9']+['.']['0'..='9']*) e:exponent()?  { format!("{}{}", n, e.unwrap_or(String::new())) }
-        / n:$(['.']['0'..='9']+) e:exponent()?  { format!("{}{}", n, e.unwrap_or(String::new())) }
+        / n:$(['0'..='9']+['.']['0'..='9']*) e:exponent()?  { format!("{}{}", n, e.unwrap_or_default()) }
+        / n:$(['.']['0'..='9']+) e:exponent()?  { format!("{}{}", n, e.unwrap_or_default()) }
         / n:$(['0'..='9']+) e:exponent()  { format!("{}{}", n, e) }
 
     rule float() -> Number
-        = s:sign()? n:float_inner() "M" { Number::Float(format!("{}{}", s.unwrap_or(String::new()), n), true)}
-        / s:sign()? n:float_inner() { Number::Float(format!("{}{}", s.unwrap_or(String::new()), n), false)}
+        = s:sign()? n:float_inner() "M" { Number::Float(format!("{}{}", s.unwrap_or_default(), n), true)}
+        / s:sign()? n:float_inner() { Number::Float(format!("{}{}", s.unwrap_or_default(), n), false)}
 
     rule integer_inner() -> String
         = n:$(['0'..='9']+) { n.to_string() }
 
     rule integer() -> Number
-        = s:sign()? n:integer_inner() "M" { Number::Integer(format!("{}{}", s.unwrap_or(String::new()), n), true)}
-        / s:sign()? n:integer_inner() { Number::Integer(format!("{}{}", s.unwrap_or(String::new()), n), false)}
+        = s:sign()? n:integer_inner() "M" { Number::Integer(format!("{}{}", s.unwrap_or_default(), n), true)}
+        / s:sign()? n:integer_inner() { Number::Integer(format!("{}{}", s.unwrap_or_default(), n), false)}
 
 
     rule ratio() -> Number
-        = s:sign()? n:integer_inner() "/" d:integer_inner() { Number::Ratio(format!("{}{}", s.unwrap_or(String::new()), n), d)}
+        = s:sign()? n:integer_inner() "/" d:integer_inner() { Number::Ratio(format!("{}{}", s.unwrap_or_default(), n), d)}
 
 
     rule form_end() = quiet!{")"} / expected!("Form End")
@@ -1342,7 +1336,7 @@ pub grammar rdl() for str {
         / bm:binding_map()    { bm }
 
     rule binding_vector() -> BindingForm
-        = "[" bf:binding_form() ** __ _ bfm:binding_form_more()? _ s:as_symbol()? _ "]" { BindingForm::BindingVector(bf, bfm.map(|bfm| Box::new(bfm)), s) }
+        = "[" bf:binding_form() ** __ _ bfm:binding_form_more()? _ s:as_symbol()? _ "]" { BindingForm::BindingVector(bf, bfm.map(Box::new), s) }
 
     rule or_map_pair() -> (String,Form)
     = s:symbol() _ f:form() { (s, f) }
@@ -1384,7 +1378,7 @@ pub fn compile(program_string: &str) -> Result<Vec<RuntimeValue>, ParseError> {
             Ok(ret)
         }
         Err(err) => Err(ParseError {
-            string: String::from(format!("{:?}", err)),
+            string: format!("{:?}", err),
         }),
     }
 }

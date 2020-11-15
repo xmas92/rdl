@@ -243,10 +243,10 @@ impl RuntimeValue {
                 1 => match &args[0] {
                     RuntimeValue::Integer(n) => {
                         if *n < 0 || *n as i128 >= v.len() as i128 {
-                            Err(RuntimeError::new(GeneralError::new(String::from(format!(
+                            Err(RuntimeError::new(GeneralError::new(format!(
                                 "Index ({}) out of range",
                                 n
-                            )))))
+                            ))))
                         } else {
                             let i: usize = *n as usize;
                             Ok(v[i].clone())
@@ -322,13 +322,11 @@ impl RuntimeValue {
                     .collect::<Result<Vec<_>, _>>()?
                     .join(" ")
             )),
-            RuntimeValue::Unquote(l) => Ok(format!(
-                "{}",
-                l.iter()
-                    .map(|e| e.decompile())
-                    .collect::<Result<Vec<_>, _>>()?
-                    .join(" ")
-            )),
+            RuntimeValue::Unquote(l) => Ok(l
+                .iter()
+                .map(|e| e.decompile())
+                .collect::<Result<Vec<_>, _>>()?
+                .join(" ")),
             RuntimeValue::Iterator(_) => todo!(),
             RuntimeValue::Form(f) => Ok(f.unparse()),
             RuntimeValue::Reference(_) => todo!(),
@@ -560,7 +558,7 @@ impl Iterator for RuntimeIter {
     fn next(&mut self) -> Option<Self::Item> {
         match &self.0 {
             RuntimeValue::Iterator(f) => {
-                let (value, next) = match (f)(Vector::new().into()) {
+                let (value, next) = match (f)(Vector::new()) {
                     e @ Err(_) => return Some(e),
                     Ok(RuntimeValue::Vector(mut v)) if v.len() == 2 => {
                         (v.pop_front().unwrap(), v.pop_front().unwrap())
@@ -583,7 +581,7 @@ impl Iterator for RuntimeIter {
             RuntimeValue::Iterator(_) => {
                 match self
                     .0
-                    .evaluate_global_context_with_args(vector![RuntimeValue::None].into())
+                    .evaluate_global_context_with_args(vector![RuntimeValue::None])
                 {
                     Ok(RuntimeValue::Integer(n)) if n < 0 => (usize::MAX, None),
                     Ok(RuntimeValue::Integer(n)) => (n as usize, Some(n as usize)),
@@ -604,10 +602,7 @@ impl Iterator for RuntimeIter {
             match self.0 {
                 RuntimeValue::Iterator(_) => {
                     let n = (n - 1) as i64;
-                    let res = match self
-                        .0
-                        .evaluate_global_context_with_args(vector![n.into()].into())
-                    {
+                    let res = match self.0.evaluate_global_context_with_args(vector![n.into()]) {
                         Ok(RuntimeValue::Vector(mut v)) if v.len() == 3 => {
                             match v.pop_back().unwrap() {
                                 RuntimeValue::Integer(taken) if taken >= 0 && taken <= n + 1 => {
