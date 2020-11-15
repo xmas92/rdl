@@ -2683,7 +2683,6 @@ intrinsic_function!(
     }
 );
 
-
 intrinsic_function!(
     /// TODO
     chunk
@@ -2736,7 +2735,7 @@ intrinsic_function!(
                     }
                 }
             }
-            
+
         )
     }
 );

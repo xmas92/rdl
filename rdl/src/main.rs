@@ -10,7 +10,8 @@ fn test_ast() -> io::Result<()> {
     compile("(defmacro -> [x & forms] (loop [x x forms forms] (if forms (let [form (first forms) threaded (if (seq? form) '((first form) x @(next form)) '(form x))] (recur threaded (next forms))) x)))").unwrap();
     compile("(defmacro ->> [x & forms] (loop [x x forms forms] (if forms (let [form (first forms) threaded (if (seq? form) '((first form) @(next form) x) '(form x))] (recur threaded (next forms))) x)))").unwrap();
     compile("(defmacro as-> [expr name & forms] '((quote let) [name expr @(sequence (interleave (repeat name) (butlast forms)))] (if forms (last forms) name)))").unwrap();
-    loop { // (def a (-> 5 repeat (->> (take 5)) (as-> n (interleave n n)))
+    loop {
+        // (def a (-> 5 repeat (->> (take 5)) (as-> n (interleave n n)))
         let mut input = String::new();
         print!("Type something: ");
         io::stdout().flush()?;
@@ -57,9 +58,16 @@ fn test_ast() -> io::Result<()> {
             Err(error) => {
                 println!("{:?}", error);
                 println!(
-                    "{}£{}", 
-                    input.chars().take(error.location.offset).collect::<String>(), 
-                    input.chars().skip(error.location.offset).collect::<String>());
+                    "{}£{}",
+                    input
+                        .chars()
+                        .take(error.location.offset)
+                        .collect::<String>(),
+                    input
+                        .chars()
+                        .skip(error.location.offset)
+                        .collect::<String>()
+                );
                 continue;
             }
         }

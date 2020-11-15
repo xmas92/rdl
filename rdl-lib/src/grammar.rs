@@ -733,9 +733,7 @@ impl Compile for Value {
 
     fn macro_compile(&self) -> RuntimeValue {
         match self {
-            Value::List(_) => {
-                RuntimeValue::Form(Box::new(Form::Value(self.clone())))
-            }
+            Value::List(_) => RuntimeValue::Form(Box::new(Form::Value(self.clone()))),
             Value::Vector(v) => {
                 RuntimeValue::Vector(Box::new(v.into_iter().map(|f| f.macro_compile()).collect()))
             }
